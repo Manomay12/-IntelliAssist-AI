@@ -433,8 +433,8 @@ def handle_chat_message(prompt: str, doc_filter: str):
 
     # Telemetry
     st.session_state.total_questions += 1
-    st.session_state.latencies.append(rag_res.get("latency_sec", 0.35))
-    record_activity("💬", f"Q: {prompt[:30]}...", f"Retrieved {len(rag_res.get('sources', []))} context chunks ({rag_res.get('latency_sec', 0.35)}s).")
+    short_q = (prompt[:22] + "...") if len(prompt) > 25 else prompt
+    record_activity("💬", f"Q&A: {short_q}", f"Retrieved {len(rag_res.get('sources', []))} chunks ({rag_res.get('latency_sec', 0.35)}s)")
 
 def upload_and_route_to_chat(files):
     """Index newly uploaded files and set active chat scope to the uploaded document."""
@@ -499,7 +499,8 @@ elif st.session_state.nav_page == "AI Chat":
 elif st.session_state.nav_page == "Semantic Search":
     def do_semantic_search(query: str, top_k: int, threshold: float, doc_filter: str):
         st.session_state.total_searches += 1
-        record_activity("🔎", f"Search: {query[:25]}...", f"Top-K: {top_k}")
+        short_q = (query[:22] + "...") if len(query) > 25 else query
+        record_activity("🔎", f"Search: {short_q}", f"Top-{top_k} matches retrieved")
         return st.session_state.vector_store.search(
             query=query,
             top_k=top_k,
@@ -521,7 +522,8 @@ elif st.session_state.nav_page == "Summarizer":
         summary_result = st.session_state.summarizer.summarize(text=full_text, mode=mode, doc_name=doc_name)
         st.session_state.current_summary_data = summary_result
         st.session_state.total_summaries += 1
-        record_activity("📝", f"Summary: {doc_name}", f"Mode: {mode}")
+        short_d = (doc_name[:22] + "...") if len(doc_name) > 25 else doc_name
+        record_activity("📝", f"Summary: {short_d}", f"Mode: {mode}")
         return summary_result
 
     render_summarizer_page(
@@ -541,7 +543,8 @@ elif st.session_state.nav_page == "Sentiment & Intent":
         sent = st.session_state.sentiment_analyzer.analyze_sentiment(full_text)
         intent = st.session_state.sentiment_analyzer.analyze_intent(full_text)
         trends = st.session_state.sentiment_analyzer.analyze_chunk_trends(chunks)
-        record_activity("🧠", f"Tone Analysis: {doc_name}", f"Tone: {sent['label']} ({sent['confidence']}%)")
+        short_d = (doc_name[:22] + "...") if len(doc_name) > 25 else doc_name
+        record_activity("🧠", f"Tone: {short_d}", f"{sent['label']} ({sent['confidence']}%)")
         return {"sentiment": sent, "intent": intent, "trends": trends}
 
     def analyze_custom(text: str):

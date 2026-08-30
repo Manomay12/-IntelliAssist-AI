@@ -39,8 +39,8 @@ def inject_custom_styles():
     /* Streamlit Main Container Tweaks */
     .block-container {
         padding-top: 1.5rem;
-        padding-bottom: 3.5rem;
-        max-width: 1240px;
+        padding-bottom: 6.5rem;
+        max-width: 1260px;
     }
 
     /* Custom Modern Scrollbars */
@@ -176,6 +176,21 @@ def inject_custom_styles():
         border-color: rgba(99, 102, 241, 0.45);
         transform: translateY(-2px);
         box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Activity Feed Item Styling */
+    .activity-item {
+        background: rgba(30, 41, 59, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 12px;
+        padding: 11px 14px;
+        margin-bottom: 10px;
+        backdrop-filter: blur(12px);
+        transition: all 0.2s ease;
+    }
+    .activity-item:hover {
+        border-color: rgba(99, 102, 241, 0.35);
+        background: rgba(30, 41, 59, 0.65);
     }
 
     /* Control Toolbar Card */

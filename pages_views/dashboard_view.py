@@ -112,7 +112,8 @@ def render_dashboard(
                     key_prefix="dash"
                 )
             if len(doc_infos) > 3:
-                if st.button(f"View All ({len(doc_infos)}) Documents →", key="dash_view_all_docs"):
+                st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+                if st.button(f"📚 View All ({len(doc_infos)}) Documents in Library →", key="dash_view_all_docs", use_container_width=True):
                     on_navigate("Documents")
 
     with col_act:
@@ -124,28 +125,34 @@ def render_dashboard(
 
         if not recent_activities:
             st.markdown("""
-            <div class="modern-card" style="padding:24px 18px; text-align:center;">
+            <div class="activity-item" style="padding:28px 18px; text-align:center;">
                 <div style="font-size:2rem; margin-bottom:8px;">🕘</div>
                 <div style="font-weight:600; font-size:0.9rem; color:#cbd5e1;">No recent activity yet</div>
                 <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">Ask questions or run semantic searches to see activity logs here.</div>
             </div>
             """, unsafe_allow_html=True)
         else:
-            for act in recent_activities[:5]:
+            for act in recent_activities[:4]:
                 icon = act.get("icon", "💬")
                 title = act.get("title", "AI Query")
                 time_str = act.get("time", "Just now")
                 desc = act.get("desc", "")
                 
                 st.markdown(f"""
-                <div class="modern-card" style="padding:12px 16px; margin-bottom:8px;">
-                    <div style="display:flex; align-items:center; justify-content:space-between;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <span style="font-size:1.1rem;">{icon}</span>
-                            <span style="font-weight:600; font-size:0.85rem; color:#f8fafc;">{title}</span>
+                <div class="activity-item">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                            <div style="font-size:1.05rem; background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:8px; flex-shrink:0;">
+                                {icon}
+                            </div>
+                            <div style="font-weight:600; font-size:0.86rem; color:#f8fafc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{title}">
+                                {title}
+                            </div>
                         </div>
-                        <span style="font-size:0.72rem; color:#64748b;">{time_str}</span>
+                        <span style="font-size:0.72rem; color:#818cf8; background:rgba(99,102,241,0.1); padding:2px 8px; border-radius:9999px; border:1px solid rgba(99,102,241,0.2); flex-shrink:0;">
+                            {time_str}
+                        </span>
                     </div>
-                    {f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:4px; line-height:1.4;">{desc}</div>' if desc else ''}
+                    {f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:6px; line-height:1.4; padding-left:36px;">{desc}</div>' if desc else ''}
                 </div>
                 """, unsafe_allow_html=True)
