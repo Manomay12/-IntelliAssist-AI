@@ -1,0 +1,79 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+5 0 obj
+<< /Length 1156 >>
+stream
+BT
+/F1 11 Tf
+50 750 Td
+15 TL
+(RESEARCH PAPER: TRANSFORMERS & RETRIEVAL-AUGMENTED GENERATION) '
+() '
+(Abstract:) '
+(Large Language Models \(LLMs\) often suffer from factual hallucinations and knowledge cutoff limitations.) '
+(Retrieval-Augmented Generation \(RAG\) mitigates these challenges by grounding generative responses in) '
+(authoritative external document repositories. This paper reviews self-attention mechanisms, vector indexing,) '
+(and top-k semantic context ranking.) '
+() '
+(1. Attention Mechanism in Transformer Architectures:) '
+(The scaled dot-product attention function maps queries, keys, and values to an output vector weighted by) '
+(softmax compatibility: Attention\(Q, K, V\) = softmax\(Q * K^T / sqrt\(d_k\)\) * V.) '
+(Multi-Head Attention enables the model to jointly attend to information from different representation subspaces.) '
+() '
+(2. Vector Indexing and Semantic Similarity:) '
+(Embeddings map high-dimensional text chunks into dense vector representations. Cosine similarity calculates) '
+(the directional alignment between query embeddings and document chunk embeddings, enabling rapid nearest-neighbor retrieval.) '
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 876 >>
+stream
+BT
+/F1 11 Tf
+50 750 Td
+15 TL
+(3. Retrieval-Augmented Generation \(RAG\) Pipeline:) '
+(RAG combines parametric memory \(pre-trained LLM weights\) with non-parametric memory \(vector database\).) '
+(When a user submits a query, the retriever fetches the most relevant text chunks from the vector store.) '
+(The context is appended to the system prompt, instructing the LLM to formulate an evidence-backed answer.) '
+() '
+(4. Experimental Evaluation & Results:) '
+(Our experiments demonstrate that RAG improves response factual accuracy by 38.4% and reduces hallucination) '
+(rates from 24.1% to less than 2.3% across open-domain technical benchmarks.) '
+() '
+(5. Conclusion:) '
+(RAG represents a foundational architecture for enterprise AI and academic document assistants.) '
+(Source citations provide transparency and verifiable accountability for generative AI outputs.) '
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001525 00000 n 
+0000001651 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+2578
+%%EOF
