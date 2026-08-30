@@ -129,6 +129,39 @@ def inject_custom_styles():
         overflow: hidden;
     }
 
+    /* Streamlit Bordered Container Custom Styling (Unified Cards) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: rgba(30, 41, 59, 0.45) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 14px !important;
+        padding: 12px 16px !important;
+        margin-bottom: 12px !important;
+        backdrop-filter: blur(16px) !important;
+        transition: all 0.22s ease-in-out !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: rgba(99, 102, 241, 0.4) !important;
+        box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.45) !important;
+    }
+
+    /* Small compact action buttons inside card containers */
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stButton"] > button {
+        min-height: 32px !important;
+        height: 32px !important;
+        font-size: 0.76rem !important;
+        padding: 2px 6px !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.01em !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stButton"] > button:hover {
+        background: rgba(99, 102, 241, 0.25) !important;
+        border-color: rgba(99, 102, 241, 0.6) !important;
+        color: #ffffff !important;
+    }
+
     /* Modern Card Component */
     .modern-card {
         background: rgba(30, 41, 59, 0.45);

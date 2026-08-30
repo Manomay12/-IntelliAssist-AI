@@ -74,7 +74,7 @@ def render_dashboard(
     st.markdown("<div style='margin:30px 0;'></div>", unsafe_allow_html=True)
 
     # Two Column Layout: Recent Documents & Recent Activity
-    col_docs, col_act = st.columns([3, 2])
+    col_docs, col_act = st.columns([1.1, 1])
 
     with col_docs:
         st.markdown("""

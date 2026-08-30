@@ -38,5 +38,5 @@ data/vector_db/*
 data/conversations/*
 !data/conversations/.gitkeep
 
-# Streamlit
-.streamlit/
+# Streamlit Secrets (keep config.toml tracked)
+.streamlit/secrets.toml
