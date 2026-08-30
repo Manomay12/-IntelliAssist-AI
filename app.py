@@ -9,10 +9,12 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Callable, Tuple
+# pyrefly: ignore [missing-import]
 import streamlit as st
 
 # Auto-launch with streamlit run if executed directly via `python app.py`
 if __name__ == "__main__" and not st.runtime.exists():
+    # pyrefly: ignore [missing-import]
     from streamlit.web import cli as stcli
     sys.argv = ["streamlit", "run", sys.argv[0]]
     sys.exit(stcli.main())
