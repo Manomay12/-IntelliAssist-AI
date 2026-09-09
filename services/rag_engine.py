@@ -1,13 +1,16 @@
 """
 Retrieval-Augmented Generation (RAG) engine for IntelliAssist AI.
 Features intelligent query normalization, per-document strict scoping, auto document mention detection,
-adaptive high-coverage semantic retrieval, and exhaustive multi-section academic explanation synthesis.
+adaptive high-coverage semantic retrieval, low-confidence hallucination protection, and exhaustive academic explanation synthesis.
 """
 
 import re
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from services.vector_store import VectorStore
 from services.llm_service import LLMService
+
+logger = logging.getLogger(__name__)
 
 SLANG_TYPO_MAP = {
     r"\bwat\b|\bwht\b|\bwt\b": "what",
@@ -78,23 +81,21 @@ class RAGEngine:
         q_lower = query.lower()
         best_doc = None
         best_score = 0
-        
+
         for doc in available_docs:
             d_name = doc.lower()
             stem = d_name.rsplit(".", 1)[0]
             stem_clean = stem.replace("_", " ").replace("-", " ")
-            
-            # Exact filename or stem match
+
             if doc.lower() in q_lower or stem in q_lower or stem_clean in q_lower:
                 return doc
-                
-            # Distinctive token matching
+
             tokens = [t for t in stem_clean.split() if len(t) >= 4 and t not in ["overview", "report", "paper", "document", "annual"]]
             matched = sum(1 for t in tokens if t in q_lower)
             if matched > 0 and matched > best_score:
                 best_score = matched
                 best_doc = doc
-                
+
         return best_doc if best_score > 0 else None
 
     def answer_question(
@@ -102,15 +103,17 @@ class RAGEngine:
         question: str,
         top_k: int = 6,
         threshold: float = 0.08,
+        min_confidence_threshold: float = 0.25,
         filter_doc: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Execute full RAG retrieval and generation pipeline delivering exhaustive explanations:
+        Execute full RAG retrieval and generation pipeline:
         1. Preprocess & normalize query (handle typos, slang, greetings, broad queries).
         2. Handle greetings/onboarding gracefully with active document guides.
         3. Strictly enforce document filtering if filter_doc or mention is present.
         4. High-coverage semantic retrieval across vector index.
-        5. Synthesize multi-section, in-depth academic answers with verified source citations.
+        5. Check confidence thresholds (low-confidence hallucination protection).
+        6. Synthesize multi-section, in-depth academic answers with verified source citations.
         """
         raw_question = question.strip()
         if not raw_question:
@@ -120,7 +123,8 @@ class RAGEngine:
                 "retrieved_count": 0,
                 "provider": self.llm_service.provider,
                 "latency_sec": 0.1,
-                "is_demo": True
+                "is_demo": True,
+                "is_low_confidence": False
             }
 
         # 1. Normalize and detect intent
@@ -156,7 +160,8 @@ class RAGEngine:
                 "provider": self.llm_service.provider,
                 "model": self.llm_service.model_name,
                 "latency_sec": 0.15,
-                "is_demo": True
+                "is_demo": True,
+                "is_low_confidence": False
             }
 
         # 3. High-Coverage Semantic Search Retrieval
@@ -176,49 +181,12 @@ class RAGEngine:
                 filter_doc=active_filter_doc
             )
 
-        # Fallback 2: If target doc specified, ensure we have chunks for it with self-healing
+        # Fallback 2: Target document enforcement
         if active_filter_doc:
             doc_all_chunks = [c for c in self.vector_store.chunks if c.get("filename") == active_filter_doc]
-            
-            # Self-healing: If document chunks are missing in memory, attempt recovery from disk registry
-            if not doc_all_chunks:
-                try:
-                    import json
-                    from pathlib import Path
-                    from services.chunker import TextChunker
-                    meta_path = Path(__file__).resolve().parent.parent / "data" / "documents_metadata.json"
-                    if meta_path.exists():
-                        with open(meta_path, "r", encoding="utf-8") as f:
-                            registry = json.load(f)
-                        
-                        # Exact or fuzzy match
-                        matched_doc = None
-                        if active_filter_doc in registry:
-                            matched_doc = registry[active_filter_doc]
-                        else:
-                            for rk, rv in registry.items():
-                                if active_filter_doc.lower() in rk.lower() or rk.lower() in active_filter_doc.lower():
-                                    matched_doc = rv
-                                    active_filter_doc = rk
-                                    break
-                        
-                        if matched_doc and matched_doc.get("full_text"):
-                            chunker = TextChunker()
-                            new_chunks = chunker.chunk_document({
-                                "filename": active_filter_doc,
-                                "pages": [{"page_number": 1, "total_pages": matched_doc.get("total_pages", 1), "text": matched_doc.get("full_text")}]
-                            })
-                            self.vector_store.add_documents(new_chunks)
-                            self.vector_store.save_to_disk()
-                            doc_all_chunks = [c for c in self.vector_store.chunks if c.get("filename") == active_filter_doc]
-                except Exception as e:
-                    print(f"Self-healing document recovery warning: {e}")
-
             if doc_all_chunks:
-                # Ensure all chunks in retrieved_chunks belong strictly to active_filter_doc
                 retrieved_chunks = [c for c in retrieved_chunks if c.get("filename") == active_filter_doc]
                 if len(retrieved_chunks) < min(top_k, len(doc_all_chunks)):
-                    # Backfill from doc_all_chunks
                     existing_ids = set(c.get("chunk_id") for c in retrieved_chunks)
                     for c in doc_all_chunks:
                         if c.get("chunk_id") not in existing_ids:
@@ -230,6 +198,36 @@ class RAGEngine:
                             break
         elif not retrieved_chunks and len(self.vector_store.chunks) > 0:
             retrieved_chunks = self.vector_store.chunks[:top_k]
+
+        # 4. Low-Confidence & No-Answer Protection:
+        max_score = max([c.get("score", 0.0) for c in retrieved_chunks], default=0.0)
+        
+        # Check if user query has virtually zero conceptual overlap with corpus
+        if active_filter_doc:
+            is_low_confidence = (len(retrieved_chunks) == 0)
+        else:
+            is_low_confidence = (len(retrieved_chunks) == 0 or max_score < min_confidence_threshold)
+
+        if is_low_confidence and len(self.vector_store.chunks) > 0:
+            logger.info("Low confidence query detected (max score: %.2f for '%s')", max_score, raw_question)
+            no_answer_msg = (
+                "### ⚠️ Insufficient Document Evidence\n\n"
+                "I couldn't find sufficient information in the uploaded documents to answer this question confidently.\n\n"
+                "💡 **Recommended next steps:**\n"
+                "- Verify if the topic is covered in your uploaded files.\n"
+                "- Check the **Target Scope** filter in the toolbar to ensure you are searching across all files or the intended document.\n"
+                "- Rephrase your question using specific keywords or terms mentioned in the document text."
+            )
+            return {
+                "answer": no_answer_msg,
+                "sources": [],
+                "retrieved_count": 0,
+                "provider": self.llm_service.provider,
+                "model": self.llm_service.model_name,
+                "latency_sec": 0.1,
+                "is_demo": True,
+                "is_low_confidence": True
+            }
 
         if not retrieved_chunks:
             return {
@@ -245,10 +243,11 @@ class RAGEngine:
                 "retrieved_count": 0,
                 "provider": self.llm_service.provider,
                 "latency_sec": 0.1,
-                "is_demo": True
+                "is_demo": True,
+                "is_low_confidence": True
             }
 
-        # 4. Build context text with page demarcations
+        # 5. Build context text with page demarcations
         context_parts = []
         for i, chunk in enumerate(retrieved_chunks, 1):
             doc_name = chunk.get("filename", "Unknown Document")
@@ -258,7 +257,7 @@ class RAGEngine:
 
         full_context = "\n\n".join(context_parts)
 
-        # 5. Formulate exhaustive academic RAG system instruction
+        # 6. Formulate exhaustive academic RAG system instruction
         target_clause = f"Focus your answer strictly and exclusively on the document '{active_filter_doc}'." if active_filter_doc else "Compare and synthesize findings across all provided documents."
         system_instruction = (
             f"You are IntelliAssist AI, an expert academic document intelligence system. {target_clause}\n"
@@ -282,7 +281,7 @@ class RAGEngine:
             f"Please provide an exhaustive, multi-section, and well-explained response based strictly on the context above."
         )
 
-        # 6. Generate answer via LLM service
+        # 7. Generate answer via LLM service
         llm_response = self.llm_service.generate(
             prompt=rag_prompt,
             system_instruction=system_instruction,
@@ -290,7 +289,7 @@ class RAGEngine:
             target_doc_name=active_filter_doc
         )
 
-        # 7. Format structured source citations
+        # 8. Format structured source citations
         sources = []
         for chunk in retrieved_chunks:
             sources.append({
@@ -311,5 +310,6 @@ class RAGEngine:
             "model": llm_response.get("model", self.llm_service.model_name),
             "latency_sec": llm_response.get("latency_sec", 0.35),
             "is_demo": llm_response.get("is_demo", False),
+            "is_low_confidence": False,
             "notice": llm_response.get("notice", None)
         }

@@ -30,6 +30,11 @@ ENV/
 .env
 .env.local
 
+# Testing & Caches
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Data storage & Vector DB runtime artifacts
 data/uploads/*
 !data/uploads/.gitkeep

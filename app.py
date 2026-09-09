@@ -78,6 +78,10 @@ from pages_views.analytics_view import render_analytics_page
 from pages_views.history_view import render_history_page
 from pages_views.settings_view import render_settings_page
 
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("intelliassist_ai")
+
 # Inject CSS
 inject_custom_styles()
 
@@ -90,7 +94,7 @@ def save_document_registry(registry: dict):
         with open(DOCUMENTS_METADATA_FILE, "w", encoding="utf-8") as f:
             json.dump(registry, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"Warning: Failed to save document registry: {e}")
+        logger.error("Failed to save document registry: %s", e)
 
 def load_document_registry() -> dict:
     """Load document metadata from disk if available."""
@@ -253,7 +257,14 @@ def process_and_index_files(files_or_paths):
         """, unsafe_allow_html=True)
         time.sleep(0.1)
 
+        file_hash = DocumentProcessor.compute_file_hash(file_bytes)
+        existing_doc_name = st.session_state.vector_store.get_document_by_hash(file_hash)
+        if existing_doc_name and existing_doc_name != filename:
+            st.info(f"ℹ️ File content matches existing document '{existing_doc_name}'. Updating indexing.")
+
         processed_doc = DocumentProcessor.process_file(file_bytes, filename)
+        if processed_doc.get("warning"):
+            st.warning(processed_doc["warning"])
         
         # Step 3-4
         progress_bar.progress(55, text=f"Chunking document '{filename}'...")
@@ -279,6 +290,7 @@ def process_and_index_files(files_or_paths):
         # Record in registry
         st.session_state.document_registry[filename] = {
             "filename": filename,
+            "file_hash": file_hash,
             "file_ext": processed_doc.get("file_ext", ".txt"),
             "file_size": file_size,
             "total_pages": processed_doc.get("total_pages", 1),
@@ -528,9 +540,18 @@ elif st.session_state.nav_page == "Summarizer":
         record_activity("📝", f"Summary: {short_d}", f"Mode: {mode}")
         return summary_result
 
+    def do_compare(doc_a_name: str, doc_b_name: str):
+        doc_a_info = st.session_state.document_registry.get(doc_a_name, {})
+        doc_b_info = st.session_state.document_registry.get(doc_b_name, {})
+        text_a = doc_a_info.get("full_text", "")
+        text_b = doc_b_info.get("full_text", "")
+        record_activity("⚖️", f"Compare: {doc_a_name[:12]} vs {doc_b_name[:12]}", "Cross-document matrix generated")
+        return st.session_state.summarizer.compare_documents(doc_a_name, text_a, doc_b_name, text_b)
+
     render_summarizer_page(
         all_documents=all_doc_names,
         on_summarize=do_summarize,
+        on_compare=do_compare,
         current_summary_data=st.session_state.current_summary_data,
         default_doc=st.session_state.target_summary_doc
     )

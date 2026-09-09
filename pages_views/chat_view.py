@@ -5,6 +5,7 @@ file profile cards, exhaustive explanation generator, streaming answers, source 
 """
 
 from typing import Dict, Any, List, Callable, Optional
+# pyrefly: ignore [missing-import]
 import streamlit as st
 from components.chat_ui import render_chat_message, render_suggested_questions
 
@@ -269,7 +270,10 @@ def render_chat_page(
     # Suggested Prompts
     st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
     target_prompt_scope = doc_filter
-    render_suggested_questions(on_select=lambda q: on_send_message(q, target_prompt_scope))
+    render_suggested_questions(
+        on_select=lambda q: on_send_message(q, target_prompt_scope),
+        active_doc=target_prompt_scope
+    )
 
     # Bottom Chat Input
     st.markdown("<div style='margin:14px 0;'></div>", unsafe_allow_html=True)

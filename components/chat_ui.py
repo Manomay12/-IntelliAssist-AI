@@ -1,29 +1,40 @@
 """
 Chat interface components for IntelliAssist AI.
-Renders message bubbles, feedback actions, copy controls, and suggested prompt chips.
+Renders message bubbles, feedback actions, copy controls, and dynamic suggested prompt chips.
 """
 
 from typing import List, Dict, Any, Callable, Optional
+# pyrefly: ignore [missing-import]
 import streamlit as st
 from components.source_card import render_sources_section
 
-def render_suggested_questions(on_select: Callable[[str], None]):
-    """Render modern clickable prompt suggestion chips."""
-    suggestions = [
-        "📋 Summarize the main findings of this document",
-        "🎯 What are the core methodologies & system architecture?",
-        "📊 Compare experimental benchmarks and performance results",
-        "💡 Explain the technical concepts in simple terms",
-        "🔍 Find critical conclusions and future recommendations"
-    ]
-    
+def render_suggested_questions(on_select: Callable[[str], None], active_doc: Optional[str] = None):
+    """Render modern clickable prompt suggestion chips tailored to active document scope."""
+    if active_doc and active_doc != "All Documents":
+        short_name = active_doc if len(active_doc) < 22 else active_doc[:19] + "..."
+        suggestions = [
+            f"📋 What is the main objective and core thesis of {short_name}?",
+            f"🎯 Summarize the methodology and architecture in {short_name}",
+            f"📊 What are the key empirical findings and benchmarks in {short_name}?",
+            f"⚠️ What limitations and future directions are mentioned in {short_name}?"
+        ]
+    else:
+        suggestions = [
+            "📋 Summarize the main findings across all uploaded documents",
+            "🎯 What are the core methodologies and system architectures?",
+            "📊 Compare experimental benchmarks and performance results",
+            "💡 Explain the technical concepts in simple terms",
+            "🔍 Find critical conclusions and future recommendations"
+        ]
+
     st.markdown("<div style='font-size:0.8rem; font-weight:600; color:#94a3b8; margin-bottom:8px;'>💡 SUGGESTED QUESTIONS</div>", unsafe_allow_html=True)
     cols = st.columns(len(suggestions))
     for i, (col, sug) in enumerate(zip(cols, suggestions)):
         with col:
             # Clean display label
-            label = sug.split()[0] + " " + " ".join(sug.split()[1:3])
-            if st.button(label, key=f"sug_{i}", help=sug, use_container_width=True):
+            words = sug.split()
+            label = words[0] + " " + " ".join(words[1:3])
+            if st.button(label, key=f"sug_{i}_{active_doc or 'all'}", help=sug, use_container_width=True):
                 on_select(sug[2:].strip())
 
 def render_chat_message(

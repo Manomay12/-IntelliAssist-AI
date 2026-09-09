@@ -4,6 +4,7 @@ Displays key metrics, Quick Ask AI card, Recent Documents with actions, and AI a
 """
 
 from typing import Dict, Any, List, Callable
+# pyrefly: ignore [missing-import]
 import streamlit as st
 from components.metrics import render_metric_grid
 from components.document_card import render_document_card

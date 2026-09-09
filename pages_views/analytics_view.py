@@ -4,6 +4,7 @@ Presents system metrics, token counts, format distributions, and AI usage statis
 """
 
 from typing import Dict, Any, List
+# pyrefly: ignore [missing-import]
 import streamlit as st
 from components.metrics import render_metric_card
 from components.charts import render_doc_distribution_chart
