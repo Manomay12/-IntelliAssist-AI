@@ -286,9 +286,37 @@ intelliassist_ai/
 
 ## 🌐 9. Cloud & Container Deployment
 
-IntelliAssist AI is fully optimized for production deployment on **Render**, **Docker**, and **Docker Compose**.
+IntelliAssist AI is fully optimized for production deployment on **Streamlit Community Cloud**, **Render**, **Docker**, and **Docker Compose**.
 
-### Option A: Deploy on Render (Recommended)
+### Option A: Deploy on Streamlit Community Cloud (Recommended & Instant)
+
+Streamlit Community Cloud is the official, purpose-built cloud platform for Streamlit applications with instant startup and continuous deployment.
+
+1. Push your repository to GitHub:
+   ```bash
+   git add .
+   git commit -m "Configure Streamlit Cloud deployment"
+   git push origin main
+   ```
+2. Go to **[share.streamlit.io](https://share.streamlit.io)** and sign in with your GitHub account.
+3. Click **Create app** (or **New app**).
+4. Fill in your repository details:
+   - **Repository**: `Manomay12/-IntelliAssist-AI`
+   - **Branch**: `main`
+   - **Main file path**: `app.py`
+5. Click **Advanced settings...** and open the **Secrets** section.
+6. Paste your API keys:
+   ```toml
+   GEMINI_API_KEY = "your-google-gemini-api-key"
+   NVIDIA_API_KEY = "your-nvidia-nim-api-key"
+   DEFAULT_LLM_PROVIDER = "Google Gemini"
+   ```
+7. Click **Save**, then click **Deploy!**
+8. Your app will build, load in seconds, and give you a permanent live public URL (e.g. `https://intelliassist-ai.streamlit.app`).
+
+---
+
+### Option B: Deploy on Render
 
 Render provides free cloud hosting with automatic continuous deployment directly from your GitHub repository.
 
@@ -334,7 +362,7 @@ If you prefer configuring the Web Service manually via Render dashboard:
 
 ---
 
-### Option B: Run with Docker
+### Option C: Run with Docker
 
 Build and run the production Docker container locally or on any cloud VM:
 
@@ -353,7 +381,7 @@ Access the application in your browser at `http://localhost:8501`.
 
 ---
 
-### Option C: Run with Docker Compose
+### Option D: Run with Docker Compose
 
 ```bash
 # Start container with volume persistence

@@ -40,7 +40,20 @@ DEFAULT_TOP_K = 6
 DEFAULT_SIMILARITY_THRESHOLD = 0.15
 
 # LLM Providers and Models
-DEFAULT_LLM_PROVIDER = os.getenv("DEFAULT_LLM_PROVIDER", "Google Gemini")
+def get_secret(key: str, default: str = "") -> str:
+    """Retrieve secret from Streamlit secrets (Streamlit Cloud) or environment variable (.env)."""
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and key in st.secrets:
+            val = st.secrets[key]
+            if val:
+                os.environ[key] = str(val)  # Sync to os.environ so downstream client SDKs can read it
+                return str(val)
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+DEFAULT_LLM_PROVIDER = get_secret("DEFAULT_LLM_PROVIDER", os.getenv("DEFAULT_LLM_PROVIDER", "Google Gemini"))
 AVAILABLE_PROVIDERS = [
     "Google Gemini",
     "NVIDIA NIM / AI",
@@ -71,7 +84,7 @@ AVAILABLE_OPENAI_MODELS = [
 DEFAULT_TEMPERATURE = 0.3
 DEFAULT_MAX_TOKENS = 2048
 
-# API Keys from environment (Securely loaded via .env)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# API Keys from environment or Streamlit Cloud secrets
+GEMINI_API_KEY = get_secret("GEMINI_API_KEY", "")
+NVIDIA_API_KEY = get_secret("NVIDIA_API_KEY", "")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY", "")

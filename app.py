@@ -55,7 +55,8 @@ from components.sidebar import render_sidebar
 from utils.config import (
     APP_NAME, APP_TAGLINE, APP_VERSION, APP_SUBTITLE,
     DEFAULT_LLM_PROVIDER, DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS,
-    DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, UPLOAD_DIR, DATA_DIR
+    DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, UPLOAD_DIR, DATA_DIR,
+    GEMINI_API_KEY, NVIDIA_API_KEY, OPENAI_API_KEY
 )
 from utils.sample_docs import generate_all_samples
 
@@ -120,9 +121,9 @@ def initialize_state():
             "model_name": "gemini-flash-latest",
             "temperature": DEFAULT_TEMPERATURE,
             "max_tokens": DEFAULT_MAX_TOKENS,
-            "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
-            "nvidia_api_key": os.getenv("NVIDIA_API_KEY", ""),
-            "openai_api_key": os.getenv("OPENAI_API_KEY", "")
+            "gemini_api_key": GEMINI_API_KEY,
+            "nvidia_api_key": NVIDIA_API_KEY,
+            "openai_api_key": OPENAI_API_KEY
         }
 
     # Core AI singletons
