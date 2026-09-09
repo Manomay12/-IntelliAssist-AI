@@ -38,14 +38,17 @@ import services.llm_service
 import pages_views.chat_view
 import pages_views.history_view
 
-importlib.reload(components.styles)
-importlib.reload(components.sidebar)
-importlib.reload(components.chat_ui)
-importlib.reload(services.conversation_manager)
-importlib.reload(services.rag_engine)
-importlib.reload(services.llm_service)
-importlib.reload(pages_views.chat_view)
-importlib.reload(pages_views.history_view)
+# Development hot-reload (disabled in production for high performance)
+if os.getenv("DEBUG_RELOAD") == "1":
+    import importlib
+    importlib.reload(components.styles)
+    importlib.reload(components.sidebar)
+    importlib.reload(components.chat_ui)
+    importlib.reload(services.conversation_manager)
+    importlib.reload(services.rag_engine)
+    importlib.reload(services.llm_service)
+    importlib.reload(pages_views.chat_view)
+    importlib.reload(pages_views.history_view)
 
 from components.styles import inject_custom_styles
 from components.sidebar import render_sidebar
@@ -157,23 +160,24 @@ def initialize_state():
     if "document_registry" not in st.session_state:
         st.session_state.document_registry = load_document_registry()
 
-    # Synchronize all registry documents with vector store on startup
+    # Synchronize registry documents with vector store on startup only if vector store is unpopulated
     vdb_docs = set(st.session_state.vector_store.get_all_documents())
-    sync_needed = False
-    for fname, dinfo in st.session_state.document_registry.items():
-        if fname not in vdb_docs and dinfo.get("full_text"):
-            try:
-                chk = TextChunker().chunk_document({
-                    "filename": fname,
-                    "pages": [{"page_number": 1, "total_pages": dinfo.get("total_pages", 1), "text": dinfo.get("full_text")}]
-                })
-                if chk:
-                    st.session_state.vector_store.add_documents(chk)
-                    sync_needed = True
-            except Exception:
-                pass
-    if sync_needed:
-        st.session_state.vector_store.save_to_disk()
+    if len(vdb_docs) == 0 and st.session_state.document_registry:
+        sync_needed = False
+        for fname, dinfo in st.session_state.document_registry.items():
+            if fname not in vdb_docs and dinfo.get("full_text"):
+                try:
+                    chk = TextChunker().chunk_document({
+                        "filename": fname,
+                        "pages": [{"page_number": 1, "total_pages": dinfo.get("total_pages", 1), "text": dinfo.get("full_text")}]
+                    })
+                    if chk:
+                        st.session_state.vector_store.add_documents(chk)
+                        sync_needed = True
+                except Exception:
+                    pass
+        if sync_needed:
+            st.session_state.vector_store.save_to_disk()
 
     if "activity_logs" not in st.session_state:
         st.session_state.activity_logs = [
@@ -323,8 +327,8 @@ def load_sample_documents_action():
         process_and_index_files(sample_files)
     st.rerun()
 
-# Auto-seed sample documents if registry is empty on initial startup
-if len(st.session_state.document_registry) == 0:
+# Auto-seed sample documents if both registry and vector database are completely empty
+if len(st.session_state.document_registry) == 0 and len(st.session_state.vector_store.chunks) == 0:
     sample_files = generate_all_samples()
     process_and_index_files(sample_files)
 

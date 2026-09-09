@@ -40,6 +40,8 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/vector_db/*
 !data/vector_db/.gitkeep
+!data/vector_db/chunks_metadata.json
+!data/vector_db/vectors_index.npy
 data/conversations/*
 !data/conversations/.gitkeep
 

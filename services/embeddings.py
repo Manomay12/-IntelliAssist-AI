@@ -29,8 +29,12 @@ class EmbeddingService:
         self.dense_dim: int = 384  # Standard 384-dimensional dense semantic vector
         self._st_model: Optional[Any] = None
         self._st_available: Optional[bool] = None
-        self._active_backend_name: str = "Uninitialized"
-        
+        self._active_backend_name: str = "Sentence-Transformers (all-MiniLM-L6-v2)"
+
+    def _ensure_backend(self):
+        """Lazily initialize the optimal embedding backend on first demand."""
+        if self._st_available is not None:
+            return
         self._initialize_backend()
 
     def _initialize_backend(self):
@@ -79,6 +83,8 @@ class EmbeddingService:
 
     def get_active_model_name(self) -> str:
         """Return human-readable active embedding model name for UI and logs."""
+        if self._st_available is None:
+            self._ensure_backend()
         return self._active_backend_name
 
     def _generate_dense_projection_vector(self, text: str) -> np.ndarray:
@@ -155,7 +161,8 @@ class EmbeddingService:
         if not texts:
             return np.empty((0, self.dense_dim), dtype=np.float32)
 
-        # Strategy 1: Genuine SentenceTransformer embeddings (if available)
+        if self._st_available is None:
+            self._ensure_backend()
         if self._st_available and self._st_model is not None:
             try:
                 embeddings = self._st_model.encode(
