@@ -84,38 +84,119 @@ def render_intent_bar_chart(intent_data: Dict[str, Any]):
     st.plotly_chart(fig, use_container_width=True)
 
 def render_sentiment_trend_chart(trend_data: List[Dict[str, Any]]):
-    """Render a sentiment trajectory curve across sequential chunks."""
+    """Render an intuitive sentiment trajectory curve across sequential chunks with distinct sentiment zones."""
     if not trend_data:
         st.info("Upload and analyze a multi-chunk document to see sentiment trends.")
         return
 
     df = pd.DataFrame(trend_data)
     
-    fig = go.Figure()
-    
-    # Add zero baseline
-    fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)", annotation_text="Neutral Baseline")
+    # Ensure all expected columns exist
+    if "polarity" not in df.columns and "score" in df.columns:
+        df["polarity"] = df["score"]
+    if "page_number" not in df.columns:
+        df["page_number"] = 1
+    if "snippet" not in df.columns:
+        df["snippet"] = "No excerpt available"
 
-    # Add trend line with area fill
+    fig = go.Figure()
+
+    # 1. Shaded Sentiment Zones
+    # Positive Zone (+0.15 to +1.15)
+    fig.add_hrect(
+        y0=0.15, y1=1.15,
+        fillcolor="rgba(16, 185, 129, 0.08)",
+        line_width=0,
+        annotation_text="🟢 Positive Zone (Optimistic / Solutions / Strengths)",
+        annotation_position="top left",
+        annotation_font=dict(color="#34d399", size=10)
+    )
+
+    # Neutral Zone (-0.15 to +0.15)
+    fig.add_hrect(
+        y0=-0.15, y1=0.15,
+        fillcolor="rgba(148, 163, 184, 0.05)",
+        line_width=0,
+        annotation_text="⚪ Neutral Zone (Factual / Descriptive / Architecture)",
+        annotation_position="top left",
+        annotation_font=dict(color="#94a3b8", size=10)
+    )
+
+    # Critical / Negative Zone (-1.15 to -0.15)
+    fig.add_hrect(
+        y0=-1.15, y1=-0.15,
+        fillcolor="rgba(239, 68, 68, 0.08)",
+        line_width=0,
+        annotation_text="🔴 Critical Zone (Challenges / Limitations / Bottlenecks)",
+        annotation_position="bottom left",
+        annotation_font=dict(color="#f87171", size=10)
+    )
+
+    # 2. Boundary and Baseline Lines
+    fig.add_hline(y=0.15, line_dash="dot", line_color="rgba(16, 185, 129, 0.25)", line_width=1)
+    fig.add_hline(y=-0.15, line_dash="dot", line_color="rgba(239, 68, 68, 0.25)", line_width=1)
+    fig.add_hline(y=0, line_dash="solid", line_color="rgba(255,255,255,0.35)", line_width=1.5)
+
+    # Custom hover data preparation
+    custom_data = list(zip(
+        df["chunk_label"],
+        df["page_number"],
+        df["label"],
+        df["confidence"],
+        df["snippet"]
+    ))
+
+    # 3. Main Trajectory Curve with Area Fill
     fig.add_trace(go.Scatter(
         x=df["chunk_index"],
         y=df["polarity"],
         mode="lines+markers",
-        name="Sentiment Polarity",
-        line=dict(color="#6366f1", width=3, shape="spline"),
-        marker=dict(size=7, color=df["color"], line=dict(color="#ffffff", width=1.5)),
+        name="Chunk Polarity",
+        line=dict(color="#818cf8", width=3, shape="spline"),
+        marker=dict(
+            size=9,
+            color=df["color"],
+            line=dict(color="#ffffff", width=1.8)
+        ),
         fill="tozeroy",
-        fillcolor="rgba(99, 102, 241, 0.12)",
-        text=df["chunk_label"] + " (" + df["label"] + ")",
-        hoverinfo="text+y"
+        fillcolor="rgba(99, 102, 241, 0.08)",
+        customdata=custom_data,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b> (Page %{customdata[1]})<br>"
+            "Tone: <b>%{customdata[2]}</b> (Polarity: %{y:+.2f})<br>"
+            "Confidence: %{customdata[3]}%<br>"
+            "<span style='font-size:11px; color:#cbd5e1;'>Excerpt: \"%{customdata[4]}\"</span>"
+            "<extra></extra>"
+        )
     ))
 
     fig.update_layout(
         **DARK_THEME_LAYOUT,
-        title=dict(text="<b>Sentiment Trajectory Across Document Chunks</b>", font_size=14),
-        xaxis=dict(title="Chunk Sequence", showgrid=True, gridcolor="rgba(255,255,255,0.06)"),
-        yaxis=dict(title="Polarity Score (-1.0 to +1.0)", showgrid=True, gridcolor="rgba(255,255,255,0.06)", range=[-1.1, 1.1]),
-        height=300
+        title=dict(
+            text="<b>Document Emotional & Thematic Arc (Chunk-by-Chunk Progression)</b>",
+            font=dict(size=14, color="#f8fafc")
+        ),
+        xaxis=dict(
+            title="Document Narrative Progression (Chunk 1 ➔ End of Document)",
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.06)",
+            dtick=max(1, len(df) // 10)
+        ),
+        yaxis=dict(
+            title="Tone Polarity Score",
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.06)",
+            range=[-1.18, 1.18],
+            tickvals=[-1.0, -0.5, 0.0, 0.5, 1.0],
+            ticktext=[
+                "-1.0 (Critical)",
+                "-0.5 (Concern)",
+                "0.0 (Neutral)",
+                "+0.5 (Positive)",
+                "+1.0 (Optimistic)"
+            ]
+        ),
+        height=360
     )
     st.plotly_chart(fig, use_container_width=True)
 

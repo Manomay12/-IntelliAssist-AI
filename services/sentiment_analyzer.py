@@ -135,15 +135,22 @@ class SentimentIntentAnalyzer:
         """Calculate sentiment trajectory over sequential document chunks."""
         trend_data = []
         for i, chunk in enumerate(chunks):
-            sent = self.analyze_sentiment(chunk.get("text", ""))
+            raw_text = chunk.get("text", "").strip()
+            clean_snippet = re.sub(r'\s+', ' ', raw_text)
+            if len(clean_snippet) > 130:
+                clean_snippet = clean_snippet[:127] + "..."
+            page = chunk.get("page_number", 1)
+            sent = self.analyze_sentiment(raw_text)
             trend_data.append({
                 "chunk_id": chunk.get("chunk_id", f"chunk_{i+1}"),
                 "chunk_index": i + 1,
-                "chunk_label": f"Chunk {i+1} (p.{chunk.get('page_number', 1)})",
+                "page_number": page,
+                "chunk_label": f"Chunk {i+1} (p.{page})",
                 "score": sent["score"],
                 "polarity": sent["score"],
                 "label": sent["label"],
                 "confidence": sent["confidence"],
-                "color": sent["dominant_color"]
+                "color": sent["dominant_color"],
+                "snippet": clean_snippet
             })
         return trend_data

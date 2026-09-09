@@ -24,7 +24,8 @@ def render_chat_page(
     on_load_session: Optional[Callable[[str], None]] = None,
     on_delete_session: Optional[Callable[[str], None]] = None,
     doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
-    on_upload_files: Optional[Callable[[List[Any]], None]] = None
+    on_upload_files: Optional[Callable[[List[Any]], None]] = None,
+    question_generator: Optional[Any] = None
 ):
     """Render the high-visibility AI Chat Page with in-chat uploading, file intelligence details, and deep explanations."""
     registry = doc_registry or {}
@@ -272,7 +273,9 @@ def render_chat_page(
     target_prompt_scope = doc_filter
     render_suggested_questions(
         on_select=lambda q: on_send_message(q, target_prompt_scope),
-        active_doc=target_prompt_scope
+        active_doc=target_prompt_scope,
+        doc_registry=registry,
+        question_generator=question_generator
     )
 
     # Bottom Chat Input

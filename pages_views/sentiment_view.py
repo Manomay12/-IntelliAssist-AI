@@ -101,10 +101,63 @@ def render_sentiment_page(
             st.markdown("<div style='margin:20px 0;'></div>", unsafe_allow_html=True)
             st.markdown("""
             <div class="modern-card">
-                <h4 style="margin:0 0 10px 0; font-size:1rem; font-weight:700; color:#f8fafc;">📈 Chunk-Level Tone Progression</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <h4 style="margin:0; font-size:1.05rem; font-weight:700; color:#f8fafc;">📈 Chunk-Level Tone Trajectory & Narrative Arc</h4>
+                        <p style="margin:2px 0 0 0; font-size:0.82rem; color:#94a3b8;">Trace how emotional tone and technical optimism evolve from document start to conclusion.</p>
+                    </div>
+                </div>
             """, unsafe_allow_html=True)
-            render_sentiment_trend_chart(res.get("trends", []))
-            st.markdown("</div>", unsafe_allow_html=True)
+
+            trends = res.get("trends", [])
+            if trends:
+                peak_chunk = max(trends, key=lambda x: x.get("polarity", x.get("score", 0)))
+                dip_chunk = min(trends, key=lambda x: x.get("polarity", x.get("score", 0)))
+
+                first_score = trends[0].get("polarity", 0)
+                last_score = trends[-1].get("polarity", 0)
+                if last_score > first_score + 0.15:
+                    arc_text = "Ascending Optimism (Resolves with strong positive findings & solutions)"
+                    arc_color = "#34d399"
+                elif last_score < first_score - 0.15:
+                    arc_text = "Critical Focus (Shifts towards discussion of limitations or risks)"
+                    arc_color = "#f87171"
+                else:
+                    arc_text = "Balanced Academic Arc (Sustained steady objective analytical discourse)"
+                    arc_color = "#93c5fd"
+
+                st.markdown(f"""
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">
+                    <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:10px; padding:10px 14px;">
+                        <div style="font-size:0.75rem; color:#34d399; font-weight:700; text-transform:uppercase;">🔝 Peak Positive Section</div>
+                        <div style="font-weight:700; color:#ffffff; font-size:0.95rem; margin-top:2px;">{peak_chunk.get('chunk_label', 'Chunk')}</div>
+                        <div style="font-size:0.75rem; color:#94a3b8;">Score: <b style="color:#34d399;">+{peak_chunk.get('polarity', 0):.2f}</b> • {peak_chunk.get('label')}</div>
+                    </div>
+                    <div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:10px 14px;">
+                        <div style="font-size:0.75rem; color:#f87171; font-weight:700; text-transform:uppercase;">🔻 Lowest Dip / Critique</div>
+                        <div style="font-weight:700; color:#ffffff; font-size:0.95rem; margin-top:2px;">{dip_chunk.get('chunk_label', 'Chunk')}</div>
+                        <div style="font-size:0.75rem; color:#94a3b8;">Score: <b style="color:#f87171;">{dip_chunk.get('polarity', 0):.2f}</b> • {dip_chunk.get('label')}</div>
+                    </div>
+                    <div style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.25); border-radius:10px; padding:10px 14px;">
+                        <div style="font-size:0.75rem; color:#a5b4fc; font-weight:700; text-transform:uppercase;">🌊 Trajectory Flow Arc</div>
+                        <div style="font-weight:700; color:{arc_color}; font-size:0.88rem; margin-top:2px;">{arc_text}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            render_sentiment_trend_chart(trends)
+
+            st.markdown("""
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:10px; padding:8px 14px; background:rgba(0,0,0,0.2); border-radius:8px; font-size:0.78rem; color:#94a3b8;">
+                <div><b>💡 How to Read:</b> Hover over any node to inspect chunk page number, confidence, and excerpt snippet.</div>
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border-radius:50%; background:#10b981;"></span> Green: Strengths / Gains</span>
+                    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border-radius:50%; background:#94a3b8;"></span> Gray: Neutral Context</span>
+                    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; border-radius:50%; background:#ef4444;"></span> Red: Risks / Limitations</span>
+                </div>
+            </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # Tab 2: Analyze Custom Text
     with tab_text:

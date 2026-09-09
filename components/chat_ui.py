@@ -8,33 +8,73 @@ from typing import List, Dict, Any, Callable, Optional
 import streamlit as st
 from components.source_card import render_sources_section
 
-def render_suggested_questions(on_select: Callable[[str], None], active_doc: Optional[str] = None):
-    """Render modern clickable prompt suggestion chips tailored to active document scope."""
-    if active_doc and active_doc != "All Documents":
-        short_name = active_doc if len(active_doc) < 22 else active_doc[:19] + "..."
-        suggestions = [
-            f"📋 What is the main objective and core thesis of {short_name}?",
-            f"🎯 Summarize the methodology and architecture in {short_name}",
-            f"📊 What are the key empirical findings and benchmarks in {short_name}?",
-            f"⚠️ What limitations and future directions are mentioned in {short_name}?"
-        ]
-    else:
-        suggestions = [
-            "📋 Summarize the main findings across all uploaded documents",
-            "🎯 What are the core methodologies and system architectures?",
-            "📊 Compare experimental benchmarks and performance results",
-            "💡 Explain the technical concepts in simple terms",
-            "🔍 Find critical conclusions and future recommendations"
-        ]
+def render_suggested_questions(
+    on_select: Callable[[str], None],
+    active_doc: Optional[str] = None,
+    doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
+    question_generator: Optional[Any] = None
+):
+    """Render modern clickable prompt suggestion chips tailored to active document scope with shuffle support."""
+    if "chat_sug_seed" not in st.session_state:
+        st.session_state.chat_sug_seed = 0
+    if "chat_prev_doc_scope" not in st.session_state:
+        st.session_state.chat_prev_doc_scope = active_doc
 
-    st.markdown("<div style='font-size:0.8rem; font-weight:600; color:#94a3b8; margin-bottom:8px;'>💡 SUGGESTED QUESTIONS</div>", unsafe_allow_html=True)
+    if st.session_state.chat_prev_doc_scope != active_doc:
+        st.session_state.chat_prev_doc_scope = active_doc
+        st.session_state.chat_sug_seed += 1
+
+    suggestions: List[str] = []
+    if question_generator:
+        target_text = ""
+        if doc_registry and active_doc and active_doc in doc_registry:
+            target_text = doc_registry[active_doc].get("full_text", "")
+
+        raw_q = question_generator.generate_questions(
+            doc_name=active_doc,
+            doc_text=target_text,
+            count=4,
+            shuffle_seed=st.session_state.chat_sug_seed
+        )
+        icons = ["📋", "🎯", "📊", "💡", "🔍"]
+        for idx, q in enumerate(raw_q):
+            icon = icons[idx % len(icons)]
+            suggestions.append(f"{icon} {q}")
+    else:
+        if active_doc and active_doc != "All Documents":
+            short_name = active_doc if len(active_doc) < 22 else active_doc[:19] + "..."
+            suggestions = [
+                f"📋 What is the main objective of {short_name}?",
+                f"🎯 Summarize the methodology in {short_name}",
+                f"📊 What are the key empirical findings in {short_name}?",
+                f"⚠️ What limitations are highlighted in {short_name}?"
+            ]
+        else:
+            suggestions = [
+                "📋 Summarize main findings across all documents",
+                "🎯 What are the core methodologies & architectures?",
+                "📊 Compare benchmark results & accuracy scores",
+                "💡 Explain key technical concepts in simple terms"
+            ]
+
+    # Header Row with Title and Shuffle Button
+    col_hdr, col_shuf = st.columns([5, 1.2])
+    with col_hdr:
+        doc_disp = f"'{active_doc}'" if active_doc and active_doc != "All Documents" else "All Documents"
+        st.markdown(f"<div style='font-size:0.8rem; font-weight:700; color:#a5b4fc; padding-top:4px;'>💡 DYNAMIC AI SUGGESTIONS ({doc_disp})</div>", unsafe_allow_html=True)
+    with col_shuf:
+        if st.button("🔄 Shuffle", key=f"btn_shuffle_chat_sug_{active_doc}_{st.session_state.chat_sug_seed}", help="Generate fresh questions for this document", use_container_width=True):
+            st.session_state.chat_sug_seed += 1
+            st.rerun()
+
     cols = st.columns(len(suggestions))
     for i, (col, sug) in enumerate(zip(cols, suggestions)):
         with col:
-            # Clean display label
             words = sug.split()
-            label = words[0] + " " + " ".join(words[1:3])
-            if st.button(label, key=f"sug_{i}_{active_doc or 'all'}", help=sug, use_container_width=True):
+            label = words[0] + " " + " ".join(words[1:4])
+            if len(label) > 26:
+                label = label[:24] + ".."
+            if st.button(label, key=f"sug_{i}_{st.session_state.chat_sug_seed}_{active_doc or 'all'}", help=sug, use_container_width=True):
                 on_select(sug[2:].strip())
 
 def render_chat_message(

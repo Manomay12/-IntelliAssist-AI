@@ -3,14 +3,16 @@ Semantic Search Page View for IntelliAssist AI.
 Enables conceptual similarity search across document vectors with highlighted snippets and relevance metrics.
 """
 
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, Optional
 import streamlit as st
 from utils.helpers import get_relevance_badge_html, get_file_icon, highlight_keywords
 
 def render_search_page(
     all_documents: List[str],
     on_search: Callable[[str, int, float, str], List[Dict[str, Any]]],
-    on_ask_about_result: Callable[[str], None]
+    on_ask_about_result: Callable[[str], None],
+    doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
+    question_generator: Optional[Any] = None
 ):
     """Render the Semantic Search page."""
     st.markdown("""
@@ -41,6 +43,54 @@ def render_search_page(
             ["All Documents"] + all_documents,
             key="search_doc_filter"
         )
+
+    # Manage dynamic suggestion seed
+    if "search_sug_seed" not in st.session_state:
+        st.session_state.search_sug_seed = 0
+    if "search_prev_doc_filter" not in st.session_state:
+        st.session_state.search_prev_doc_filter = doc_filter
+
+    if st.session_state.search_prev_doc_filter != doc_filter:
+        st.session_state.search_prev_doc_filter = doc_filter
+        st.session_state.search_sug_seed += 1
+
+    # Dynamic AI Suggested Questions Row
+    if question_generator:
+        target_text = ""
+        if doc_registry and doc_filter in doc_registry:
+            target_text = doc_registry[doc_filter].get("full_text", "")
+
+        suggested_queries = question_generator.generate_questions(
+            doc_name=doc_filter,
+            doc_text=target_text,
+            count=4,
+            shuffle_seed=st.session_state.search_sug_seed
+        )
+
+        st.markdown("<div style='margin:12px 0 6px 0;'></div>", unsafe_allow_html=True)
+        col_sug_hdr, col_sug_refresh = st.columns([5, 1.2])
+        with col_sug_hdr:
+            scope_label = f"'{doc_filter}'" if doc_filter != "All Documents" else "All Documents"
+            st.markdown(f"""
+            <div style="font-size:0.8rem; font-weight:700; color:#a5b4fc; display:flex; align-items:center; gap:6px;">
+                <span>💡 AI-Suggested Inquiries for {scope_label}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_sug_refresh:
+            if st.button("🔄 Shuffle", key=f"btn_shuffle_search_sug_{doc_filter}_{st.session_state.search_sug_seed}", help="Generate fresh exploratory questions for this scope", use_container_width=True):
+                st.session_state.search_sug_seed += 1
+                st.rerun()
+
+        sug_cols = st.columns(len(suggested_queries))
+        for s_idx, (scol, sq) in enumerate(zip(sug_cols, suggested_queries)):
+            with scol:
+                words = sq.split()
+                short_label = words[0] + " " + " ".join(words[1:4])
+                if len(short_label) > 26:
+                    short_label = short_label[:24] + ".."
+                if st.button(f"🔍 {short_label}", key=f"sug_btn_{s_idx}_{st.session_state.search_sug_seed}_{doc_filter}", help=sq, use_container_width=True):
+                    st.session_state.semantic_search_input = sq
+                    st.rerun()
 
     with st.expander("⚙️ Advanced Search Tuning", expanded=False):
         t_col1, t_col2 = st.columns(2)

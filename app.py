@@ -70,6 +70,7 @@ from services.rag_engine import RAGEngine
 from services.summarizer import DocumentSummarizer
 from services.sentiment_analyzer import SentimentIntentAnalyzer
 from services.conversation_manager import ConversationManager
+from services.question_generator import QuestionGenerator
 
 # Page Views
 from pages_views.dashboard_view import render_dashboard
@@ -157,6 +158,9 @@ def initialize_state():
 
     if "conversation_manager" not in st.session_state:
         st.session_state.conversation_manager = ConversationManager()
+
+    if "question_generator" not in st.session_state:
+        st.session_state.question_generator = QuestionGenerator()
 
     if "document_registry" not in st.session_state:
         st.session_state.document_registry = load_document_registry()
@@ -384,6 +388,9 @@ selected_nav = render_sidebar(
 
 if selected_nav != st.session_state.nav_page:
     st.session_state.nav_page = selected_nav
+    if selected_nav == "Summarizer":
+        st.session_state.target_summary_doc = None
+        st.session_state.current_summary_data = None
     st.rerun()
 
 # ----------------- Navigation Router -----------------
@@ -511,7 +518,8 @@ elif st.session_state.nav_page == "AI Chat":
         on_load_session=handle_load_session,
         on_delete_session=handle_delete_session,
         doc_registry=st.session_state.document_registry,
-        on_upload_files=upload_and_route_to_chat
+        on_upload_files=upload_and_route_to_chat,
+        question_generator=st.session_state.question_generator
     )
 
 # Page: 🔎 Semantic Search
@@ -530,7 +538,9 @@ elif st.session_state.nav_page == "Semantic Search":
     render_search_page(
         all_documents=all_doc_names,
         on_search=do_semantic_search,
-        on_ask_about_result=lambda q: (setattr(st.session_state, "nav_page", "AI Chat"), handle_chat_message(q, "All Documents"), st.rerun())
+        on_ask_about_result=lambda q: (setattr(st.session_state, "nav_page", "AI Chat"), handle_chat_message(q, "All Documents"), st.rerun()),
+        doc_registry=st.session_state.document_registry,
+        question_generator=st.session_state.question_generator
     )
 
 # Page: 📝 Summarizer

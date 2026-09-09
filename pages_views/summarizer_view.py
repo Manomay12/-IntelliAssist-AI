@@ -52,17 +52,20 @@ def render_summarizer_page(
     # Tabs: Single Document Summarizer vs Cross-Document Comparison
     tab_single, tab_compare = st.tabs(["📝 Single Document Summarizer", "⚖️ Cross-Document Comparison"])
 
+    PLACEHOLDER_DOC = "-- Select a document to summarize --"
+    doc_options = [PLACEHOLDER_DOC] + all_documents
+
     with tab_single:
         # Configuration Controls
         c_doc, c_mode, c_btn = st.columns([3, 2.5, 1.5])
         with c_doc:
             default_idx = 0
-            if default_doc and default_doc in all_documents:
-                default_idx = all_documents.index(default_doc)
+            if default_doc and default_doc in doc_options:
+                default_idx = doc_options.index(default_doc)
 
             selected_doc = st.selectbox(
                 "Select Document",
-                all_documents,
+                doc_options,
                 index=default_idx,
                 key="summarizer_doc_select"
             )
@@ -77,10 +80,41 @@ def render_summarizer_page(
             st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
             generate_clicked = st.button("✨ Summarize", type="primary", use_container_width=True, key="btn_generate_summary")
 
-        summary_data = current_summary_data
-        if generate_clicked or not summary_data or summary_data.get("doc_name") != selected_doc or summary_data.get("mode") != selected_mode:
-            with st.spinner(f"Analyzing and generating {selected_mode} for '{selected_doc}'..."):
-                summary_data = on_summarize(selected_doc, selected_mode)
+        if selected_doc == PLACEHOLDER_DOC:
+            if generate_clicked:
+                st.warning("Please choose a document from the dropdown above before summarizing.")
+            st.markdown("""
+            <div class="modern-card" style="text-align:center; padding:48px 24px; border:1px dashed rgba(99,102,241,0.3); background:rgba(30,41,59,0.4); margin-top:20px; border-radius:12px;">
+                <div style="font-size:3.2rem; margin-bottom:12px;">📄</div>
+                <h3 style="font-size:1.25rem; font-weight:700; color:#f8fafc; margin-bottom:8px;">No Document Selected</h3>
+                <p style="color:#94a3b8; font-size:0.95rem; max-width:540px; margin:0 auto 20px auto; line-height:1.6;">
+                    Please select a document from the dropdown above and choose your preferred summary style (Executive, Detailed, Key Findings, Bullet Points, or Quick Summary) to generate an AI synthesis.
+                </p>
+                <div style="display:inline-flex; gap:8px; align-items:center; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.25); padding:8px 16px; border-radius:20px; color:#a5b4fc; font-size:0.85rem;">
+                    <span>💡 Choose any indexed PDF or DOCX file to extract executive summaries, key topics, entities, and action items.</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            summary_data = None
+        else:
+            summary_data = current_summary_data
+            if generate_clicked:
+                with st.spinner(f"Analyzing and generating {selected_mode} for '{selected_doc}'..."):
+                    summary_data = on_summarize(selected_doc, selected_mode)
+            elif summary_data and summary_data.get("doc_name") == selected_doc and summary_data.get("mode") == selected_mode:
+                # Use cached summary
+                pass
+            else:
+                summary_data = None
+                st.markdown(f"""
+                <div class="modern-card" style="text-align:center; padding:36px 20px; border:1px solid rgba(99,102,241,0.3); background:rgba(30,41,59,0.5); margin-top:16px;">
+                    <div style="font-size:2.4rem; margin-bottom:10px;">✨</div>
+                    <div style="font-weight:700; font-size:1.1rem; color:#f8fafc; margin-bottom:6px;">Ready to Synthesize: <span style="color:#a5b4fc;">{selected_doc}</span></div>
+                    <p style="font-size:0.88rem; color:#94a3b8; max-width:480px; margin:0 auto 16px auto;">
+                        Selected mode: <b>{selected_mode}</b>. Click the <b>'✨ Summarize'</b> button above to extract executive takeaways, concepts, and key topics.
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
 
         if summary_data:
             st.markdown("<div style='margin:16px 0;'></div>", unsafe_allow_html=True)
