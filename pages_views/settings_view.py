@@ -72,36 +72,136 @@ def render_settings_page(
             key="set_model_select"
         )
 
-    # API Keys
+    # API Keys (Secured & Hidden for Privacy)
+    has_gemini_key = bool(current_settings.get("gemini_api_key") or GEMINI_API_KEY)
+    has_nvidia_key = bool(current_settings.get("nvidia_api_key") or NVIDIA_API_KEY)
+    has_openai_key = bool(current_settings.get("openai_api_key") or OPENAI_API_KEY)
+
     if "Gemini" in provider:
-        st.text_input(
-            "Google Gemini API Key",
-            value=current_settings.get("gemini_api_key", GEMINI_API_KEY),
-            type="password",
-            placeholder="AQ...",
-            help="Google Gemini API Key is active",
-            key="set_gemini_key"
-        )
-        st.success("🟢 Google Gemini API Connected & Ready.")
+        if has_gemini_key:
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:700; color:#34d399; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
+                        🔒 Google Gemini API Key Active (Secured & Hidden)
+                    </span>
+                    <span style="font-size:0.75rem; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:2px 8px; border-radius:6px; font-weight:600;">
+                        Server-Side Secret
+                    </span>
+                </div>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Connected securely via backend environment secrets. The raw API key is masked and never exposed to client browsers.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "Override with Custom Gemini Key (Optional)",
+                value="",
+                type="password",
+                placeholder="•••••••••••••••••••••••••••••••• (Leave blank to keep server key)",
+                help="Your server API key is hidden for security. Leave this empty to continue using the server key, or type a custom key to override.",
+                key="set_gemini_key"
+            )
+        else:
+            st.markdown("""
+            <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <span style="font-weight:700; color:#fbbf24; font-size:0.88rem;">⚠️ No Google Gemini API Key Configured</span>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Enter your Gemini API key below or switch to Smart Demo AI to test RAG and summarization without API keys.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "Google Gemini API Key",
+                value="",
+                type="password",
+                placeholder="Paste your Gemini API key (e.g. AIza...)",
+                key="set_gemini_key"
+            )
+
     elif "NVIDIA" in provider:
-        st.text_input(
-            "NVIDIA NIM / AI API Key",
-            value=current_settings.get("nvidia_api_key", NVIDIA_API_KEY),
-            type="password",
-            placeholder="nvapi-...",
-            help="NVIDIA NIM API Key is active",
-            key="set_nvidia_key"
-        )
-        st.success("🟢 NVIDIA NIM / AI API Key Connected & Ready.")
+        if has_nvidia_key:
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:700; color:#34d399; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
+                        🔒 NVIDIA NIM API Key Active (Secured & Hidden)
+                    </span>
+                    <span style="font-size:0.75rem; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:2px 8px; border-radius:6px; font-weight:600;">
+                        Server-Side Secret
+                    </span>
+                </div>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Connected securely via backend environment secrets. The raw API key is masked and never exposed to client browsers.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "Override with Custom NVIDIA Key (Optional)",
+                value="",
+                type="password",
+                placeholder="•••••••••••••••••••••••••••••••• (Leave blank to keep server key)",
+                help="Your server API key is hidden for security. Leave blank to keep the server key.",
+                key="set_nvidia_key"
+            )
+        else:
+            st.markdown("""
+            <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <span style="font-weight:700; color:#fbbf24; font-size:0.88rem;">⚠️ No NVIDIA NIM API Key Configured</span>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Enter your NVIDIA NIM API key below or switch to Smart Demo AI to test without an API key.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "NVIDIA NIM / AI API Key",
+                value="",
+                type="password",
+                placeholder="Paste your NVIDIA NIM API key (e.g. nvapi-...)",
+                key="set_nvidia_key"
+            )
+
     elif "OpenAI" in provider:
-        st.text_input(
-            "OpenAI API Key",
-            value=current_settings.get("openai_api_key", OPENAI_API_KEY),
-            type="password",
-            placeholder="sk-...",
-            help="Get your key from OpenAI Platform",
-            key="set_openai_key"
-        )
+        if has_openai_key:
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span style="font-weight:700; color:#34d399; font-size:0.88rem; display:flex; align-items:center; gap:6px;">
+                        🔒 OpenAI API Key Active (Secured & Hidden)
+                    </span>
+                    <span style="font-size:0.75rem; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:2px 8px; border-radius:6px; font-weight:600;">
+                        Server-Side Secret
+                    </span>
+                </div>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Connected securely via backend environment secrets. The raw API key is masked and never exposed to client browsers.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "Override with Custom OpenAI Key (Optional)",
+                value="",
+                type="password",
+                placeholder="•••••••••••••••••••••••••••••••• (Leave blank to keep server key)",
+                help="Your server API key is hidden for security. Leave blank to keep the server key.",
+                key="set_openai_key"
+            )
+        else:
+            st.markdown("""
+            <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:10px; padding:10px 14px; margin:12px 0;">
+                <span style="font-weight:700; color:#fbbf24; font-size:0.88rem;">⚠️ No OpenAI API Key Configured</span>
+                <p style="margin:4px 0 0 0; font-size:0.8rem; color:#cbd5e1;">
+                    Enter your OpenAI API key below or switch to Smart Demo AI to test without an API key.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.text_input(
+                "OpenAI API Key",
+                value="",
+                type="password",
+                placeholder="Paste your OpenAI key (e.g. sk-...)",
+                key="set_openai_key"
+            )
     else:
         st.info("💡 **Smart Demo AI is active.** You can test full RAG Q&A, summaries, and deep explanations without any API keys!")
 
@@ -177,14 +277,18 @@ def render_settings_page(
 
     # Save button
     if st.button("💾 Save All Settings", type="primary", key="btn_save_all_settings"):
+        custom_gem = st.session_state.get("set_gemini_key", "").strip()
+        custom_nvd = st.session_state.get("set_nvidia_key", "").strip()
+        custom_oai = st.session_state.get("set_openai_key", "").strip()
+
         updated_settings = {
             "provider": provider,
             "model_name": model_name,
             "temperature": temp,
             "max_tokens": max_tokens,
-            "gemini_api_key": st.session_state.get("set_gemini_key", GEMINI_API_KEY),
-            "nvidia_api_key": st.session_state.get("set_nvidia_key", NVIDIA_API_KEY),
-            "openai_api_key": st.session_state.get("set_openai_key", OPENAI_API_KEY)
+            "gemini_api_key": custom_gem if custom_gem else (current_settings.get("gemini_api_key") or GEMINI_API_KEY),
+            "nvidia_api_key": custom_nvd if custom_nvd else (current_settings.get("nvidia_api_key") or NVIDIA_API_KEY),
+            "openai_api_key": custom_oai if custom_oai else (current_settings.get("openai_api_key") or OPENAI_API_KEY)
         }
         on_save_settings(updated_settings)
-        st.toast("Settings saved successfully!", icon="✅")
+        st.toast("Settings saved successfully! (API keys kept securely hidden)", icon="🔒")
