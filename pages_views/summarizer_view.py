@@ -139,24 +139,28 @@ def render_summarizer_page(
                 if st.button("📋 Copy Summary", key="btn_copy_sum", use_container_width=True):
                     st.toast("Summary copied to clipboard!", icon="📋")
 
-            # Main AI Summary Card
+            provider_badge = summary_data.get("provider", "IntelliAssist AI")
+            # Main AI Summary Header Card
             st.markdown(f"""
-            <div class="modern-card" style="background:rgba(30, 41, 59, 0.7); border-color:rgba(99, 102, 241, 0.35); padding:24px 28px; margin:16px 0;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px;">
+            <div class="modern-card" style="background:rgba(30, 41, 59, 0.7); border-color:rgba(99, 102, 241, 0.35); padding:16px 24px; margin:16px 0 12px 0;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="font-size:1.3rem;">📋</span>
                         <span style="font-weight:700; font-size:1.15rem; color:#f8fafc;">{mode_label}</span>
                         <span style="font-size:0.75rem; background:rgba(99,102,241,0.2); color:#a5b4fc; padding:2px 8px; border-radius:6px;">{selected_doc}</span>
                     </div>
-                    <div style="font-size:0.75rem; color:#64748b;">
-                        Synthesized by IntelliAssist AI
+                    <div style="font-size:0.75rem; color:#94a3b8; background:rgba(255,255,255,0.05); padding:3px 10px; border-radius:12px; border:1px solid rgba(255,255,255,0.1);">
+                        Synthesized by: <b style="color:#c7d2fe;">{provider_badge}</b>
                     </div>
                 </div>
-                <div style="line-height:1.75; color:#f1f5f9; font-size:0.96rem;">
+            </div>
             """, unsafe_allow_html=True)
 
+            st.markdown(f"""
+            <div class="modern-card" style="background:rgba(30, 41, 59, 0.5); border-color:rgba(99, 102, 241, 0.25); padding:24px 28px; margin-bottom:16px; line-height:1.8; color:#f1f5f9;">
+            """, unsafe_allow_html=True)
             st.markdown(summary_text)
-            st.markdown("</div></div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
             # Topics and Entities Grid
             col_topics, col_entities = st.columns(2)

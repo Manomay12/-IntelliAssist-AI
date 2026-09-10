@@ -35,6 +35,12 @@ class DocumentProcessor:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
         # Replace non-breaking spaces
         text = text.replace("\u00a0", " ").replace("\u200b", "")
+        # Remove dot leaders commonly found in Tables of Contents (e.g. "......", ". . . . .", "....")
+        text = re.sub(r'(?:\s*\.){3,}\s*', ' ', text)
+        text = re.sub(r'\.{2,}', ' ', text)
+        # Remove repeated underscores or dashes used as horizontal lines
+        text = re.sub(r'_{2,}', ' ', text)
+        text = re.sub(r'-{3,}', ' ', text)
         # Replace multiple spaces/tabs with a single space
         text = re.sub(r"[ \t]+", " ", text)
         # Collapse excessive newlines into max 2

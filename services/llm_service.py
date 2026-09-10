@@ -26,14 +26,14 @@ class LLMService:
         self.max_tokens = max_tokens
 
         if "NVIDIA" in self.provider:
-            self.api_key = api_key or os.getenv("NVIDIA_API_KEY", "")
-            self.model_name = model_name or "meta/llama-3.2-11b-vision-instruct"
-        elif "Gemini" in self.provider:
-            self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
-            self.model_name = model_name or "gemini-flash-latest"
+            self.api_key = api_key if (api_key and api_key.startswith("nvapi-")) else (os.getenv("NVIDIA_API_KEY") or api_key or "")
+            self.model_name = model_name if (model_name and "/" in model_name) else "meta/llama-3.2-11b-vision-instruct"
         elif "OpenAI" in self.provider:
-            self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
-            self.model_name = model_name or "gpt-4o-mini"
+            self.api_key = api_key if (api_key and api_key.startswith("sk-")) else (os.getenv("OPENAI_API_KEY") or api_key or "")
+            self.model_name = model_name if (model_name and "gpt" in model_name) else "gpt-4o-mini"
+        elif "Gemini" in self.provider:
+            self.api_key = api_key if (api_key and not api_key.startswith("sk-") and not api_key.startswith("nvapi-")) else (os.getenv("GEMINI_API_KEY") or api_key or "")
+            self.model_name = model_name if (model_name and "gemini" in model_name) else "gemini-flash-latest"
         else:
             self.api_key = api_key or ""
             self.model_name = model_name or "Academic-Local-DeepNLP-v3"
@@ -142,6 +142,35 @@ class LLMService:
                     "is_demo": False
                 }
             except Exception as e:
+                # If OpenAI fails (e.g. 429 quota exhausted), attempt NVIDIA NIM fallback if key is available
+                nv_key = os.getenv("NVIDIA_API_KEY")
+                if nv_key:
+                    try:
+                        from openai import OpenAI
+                        nv_client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=nv_key)
+                        nv_messages = []
+                        if system_instruction:
+                            nv_messages.append({"role": "system", "content": system_instruction})
+                        nv_messages.append({"role": "user", "content": prompt})
+                        nv_model = "meta/llama-3.2-11b-vision-instruct"
+                        nv_resp = nv_client.chat.completions.create(
+                            model=nv_model,
+                            messages=nv_messages,
+                            temperature=self.temperature,
+                            max_tokens=self.max_tokens,
+                            timeout=15
+                        )
+                        nv_text = nv_resp.choices[0].message.content or ""
+                        latency = round(time.time() - start_time, 2)
+                        return {
+                            "text": nv_text,
+                            "provider": "NVIDIA NIM / AI (OpenAI Quota Failover)",
+                            "model": nv_model,
+                            "latency_sec": latency,
+                            "is_demo": False
+                        }
+                    except Exception:
+                        pass
                 return self._generate_smart_demo(prompt, context_chunks, target_doc_name=target_doc_name, fallback_reason=f"OpenAI API Notice: {str(e)}")
 
         # 4. Default: Smart Local Demo AI (Guaranteed 100% operational with exhaustive explanations)
@@ -203,19 +232,27 @@ class LLMService:
         unique_docs = sorted(list(set(c.get("filename", "Document") for c in chunks_to_use if c.get("filename"))))
         is_multi_doc = len(unique_docs) > 1 and (not target_doc_name or target_doc_name == "All Documents")
 
-        # Extract structured sentences across all chunks
+        # Extract structured sentences across all chunks with dot leader stripping
         all_sentences = []
         doc_sentence_map = {}
         for c in chunks_to_use:
             txt = c.get("text", "").strip()
+            # Clean dot leaders from chunk text
+            txt = re.sub(r'(?:^\s*)?(?:\d+[\.\s]+)?[A-Z][A-Za-z\s]{2,40}(?:\s*\.){2,}\s*', '', txt)
+            txt = re.sub(r'(?:\s*\.){2,}\s*', ' ', txt)
+            txt = re.sub(r'\.{2,}', ' ', txt)
             c_doc = c.get("filename", doc_name)
             c_page = c.get("page_number", 1)
-            sentences = [s.strip().replace("\n", " ") for s in re.split(r'(?<=[.?!])\s+', txt) if len(s.strip()) > 20]
-            if c_doc not in doc_sentence_map:
-                doc_sentence_map[c_doc] = []
-            for s in sentences:
-                all_sentences.append((s, c_doc, c_page))
-                doc_sentence_map[c_doc].append((s, c_page))
+            raw_s = re.split(r'(?:(?<=[.?!])\s+|\n\s*\n)', txt)
+            for s in raw_s:
+                s_clean = re.sub(r'\s+', ' ', s).strip()
+                s_clean = re.sub(r'^(?:[\d\.\-\*•]+|[a-z]\s*[:\-])\s*', '', s_clean).strip()
+                s_clean = re.sub(r'\.{2,}', '', s_clean).strip()
+                if len(s_clean) > 22 and not re.match(r'^(?:table of contents|contents|page \d+)\b', s_clean, re.I):
+                    all_sentences.append((s_clean, c_doc, c_page))
+                    if c_doc not in doc_sentence_map:
+                        doc_sentence_map[c_doc] = []
+                    doc_sentence_map[c_doc].append((s_clean, c_page))
 
         # Deduplicate sentences
         seen = set()

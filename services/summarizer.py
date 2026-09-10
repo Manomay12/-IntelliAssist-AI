@@ -89,24 +89,50 @@ class DocumentSummarizer:
     def _generate_smart_local_summary(self, text: str, mode: str, doc_name: str) -> str:
         """
         Generate high-quality, mode-specific structured summary locally
-        using sentence classification, keyword extraction, and tailored layouts.
+        using robust sentence classification, keyword extraction, and domain-agnostic layouts.
+        Completely eliminates dot leaders and TOC artifacts.
         """
-        raw_sentences = re.split(r'(?<=[.?!])\s+', text)
-        sentences = [s.strip().replace("\n", " ") for s in raw_sentences if len(s.strip()) > 20]
+        # 1. Clean dot leaders, repeated dots, and formatting artifacts
+        cleaned_text = re.sub(r'(?:^\s*)?(?:\d+[\.\s]+)?[A-Z][A-Za-z\s]{2,40}(?:\s*\.){2,}\s*', '', text)
+        cleaned_text = re.sub(r'(?:\s*\.){2,}\s*', ' ', cleaned_text)
+        cleaned_text = re.sub(r'\.{2,}', ' ', cleaned_text)
+        cleaned_text = re.sub(r'_{2,}', ' ', cleaned_text)
+        cleaned_text = re.sub(r'-{3,}', ' ', cleaned_text)
 
-        if not sentences:
+        # 2. Split on sentence boundaries, paragraphs, or bullet items
+        raw_parts = re.split(r'(?:(?<=[.?!])\s+|\n\s*\n|\n(?=\s*[•\-\*\dA-Z]))', cleaned_text)
+        candidate_sentences = []
+        for p in raw_parts:
+            s = re.sub(r'\s+', ' ', p).strip()
+            # Strip leading list bullets/numbers: "1. ", "• ", "- ", "n ", "a) "
+            s = re.sub(r'^(?:[\d\.\-\*•]+|[a-z]\s*[:\-])\s*', '', s).strip()
+            # Strip any remaining dot sequences
+            s = re.sub(r'\.{2,}', '', s).strip()
+            if len(s) < 25 or len(s) > 700:
+                continue
+            # Filter out table of contents or header lines
+            if re.match(r'^(?:table of contents|contents|overview of contents|page \d+|chapter \d+|section \d+|all rights reserved)\b', s, re.IGNORECASE):
+                continue
+            alpha_chars = sum(1 for c in s if c.isalpha())
+            if alpha_chars < 15 or (alpha_chars / len(s)) < 0.5:
+                continue
+            if not s.endswith(('.', '!', '?')):
+                s += '.'
+            candidate_sentences.append(s)
+
+        if not candidate_sentences:
             return f"**Summary of {doc_name}**\n\nThe document contains minimal textual content."
 
-        # Deduplicate sentences while preserving chronological sequence
+        # Deduplicate sentences while preserving sequence
         seen = set()
         clean_sentences = []
-        for s in sentences:
-            k = s.lower()[:45]
+        for s in candidate_sentences:
+            k = s.lower()[:50]
             if k not in seen:
                 seen.add(k)
                 clean_sentences.append(s)
 
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', cleaned_text.lower())
         word_freq = Counter(words)
 
         # Scored sentences by word importance
@@ -123,56 +149,76 @@ class DocumentSummarizer:
         scored_sentences.sort(key=lambda x: x[0], reverse=True)
         top_ranked = [item[2] for item in scored_sentences]
 
-        # Categorize sentences into functional roles
+        # Categorize sentences into functional roles across all domains
         metric_pattern = re.compile(
-            r'\b(?:\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:BLEU|F1|accuracy|ms|seconds|GB|MB|parameters|users|requests|GPUs?|days?|times?|higher|lower|improvement))\b|'
-            r'\b(?:achiev|outperform|increas|decreas|result|benchmark|state-of-the-art|sota|evaluat)\b',
+            r'\b(?:\d+(?:\.\d+)?%|\d+(?:,\d+)?\s*(?:courses?|students?|users?|institutions?|cases?|patients?|records?|requests?|hours?|days?|years?|GB|MB|tokens?|parameters?|BLEU|F1|accuracy|ms|seconds|higher|lower|increase|reduction|growth))\b|'
+            r'\b(?:achiev|outperform|increas|decreas|result|benchmark|state-of-the-art|sota|evaluat|measured|yielded|scaled|reached|introduced over \d+)\b',
             re.IGNORECASE
         )
         intro_pattern = re.compile(
-            r'\b(?:introduc|propos|present|focus|aim|objectiv|paper|document|overview|background|design|address|we build|we study)\b',
+            r'\b(?:introduc|propos|present|focus|aim|objectiv|overview|background|design|address|problem|mission|purpose|vision|initiative|we study|this document|report|curriculum|program)\b',
             re.IGNORECASE
         )
-        tech_pattern = re.compile(
-            r'\b(?:architecture|mechanism|model|algorithm|transformer|attention|neural|network|layer|embedding|encoder|decoder|pipeline|methodology|technique|framework|retriev)\b',
+        method_pattern = re.compile(
+            r'\b(?:architecture|mechanism|model|algorithm|transformer|neural|pipeline|methodology|technique|framework|retriev|technology|platform|integration|system|curriculum|pedagogy|training|development|workflow|operational|strategy|infrastructure|solution|module|innovations?)\b',
             re.IGNORECASE
         )
         takeaway_pattern = re.compile(
-            r'\b(?:conclud|demonstrat|show|indicat|highlight|implication|takeaway|futur|significan|impact|recommend|promis|crucial|superior)\b',
+            r'\b(?:conclud|demonstrat|show|indicat|highlight|implication|takeaway|futur|significan|impact|recommend|promis|crucial|essential|priorit|sustainab|long-term|next steps?|forward)\b',
             re.IGNORECASE
         )
 
         metric_sents = [s for s in clean_sentences if metric_pattern.search(s)]
         intro_sents = [s for s in clean_sentences if intro_pattern.search(s)]
-        tech_sents = [s for s in clean_sentences if tech_pattern.search(s)]
+        method_sents = [s for s in clean_sentences if method_pattern.search(s)]
         takeaway_sents = [s for s in clean_sentences if takeaway_pattern.search(s)]
 
-        # Fallbacks if specific category lists are sparse
-        if not intro_sents:
-            intro_sents = clean_sentences[:2]
-        if not metric_sents:
-            metric_sents = top_ranked[:4]
-        if not tech_sents:
-            tech_sents = clean_sentences[1:4] if len(clean_sentences) > 3 else clean_sentences
-        if not takeaway_sents:
-            takeaway_sents = clean_sentences[-3:] if len(clean_sentences) >= 3 else clean_sentences
+        topics = self.extract_key_topics(cleaned_text, max_topics=5)
+        topics_str = ", ".join(topics) if topics else "Document Scope"
+        entities = self.extract_entities(cleaned_text)
 
-        topics = self.extract_key_topics(text, max_topics=5)
-        topics_str = ", ".join(topics) if topics else "Document Analysis"
-        entities = self.extract_entities(text)
+        # Helper to pick unused sentences for non-repeating sections
+        used_sents = set()
+        def pick_sentences(pool: List[str], count: int = 2) -> List[str]:
+            picked = []
+            for s in pool:
+                if s not in used_sents:
+                    used_sents.add(s)
+                    picked.append(s)
+                if len(picked) >= count:
+                    break
+            if len(picked) < count:
+                for s in top_ranked:
+                    if s not in used_sents:
+                        used_sents.add(s)
+                        picked.append(s)
+                    if len(picked) >= count:
+                        break
+            if len(picked) < count:
+                for s in clean_sentences:
+                    if s not in used_sents:
+                        used_sents.add(s)
+                        picked.append(s)
+                    if len(picked) >= count:
+                        break
+            return picked
 
         # -------------------------------------------------------------
         # MODE 1: Quick Summary (Ultra-concise TL;DR, <100 words)
         # -------------------------------------------------------------
         if mode == "Quick Summary":
-            lead = intro_sents[0] if intro_sents else clean_sentences[0]
-            core_finding = metric_sents[0] if metric_sents and metric_sents[0] != lead else (tech_sents[0] if tech_sents else "")
-            takeaway = takeaway_sents[0] if takeaway_sents and takeaway_sents[0] not in [lead, core_finding] else (clean_sentences[-1] if len(clean_sentences) > 1 else lead)
+            lead = pick_sentences(intro_sents, 1)
+            core = pick_sentences(metric_sents or method_sents, 1)
+            takeaway = pick_sentences(takeaway_sents, 1)
+
+            lead_txt = lead[0] if lead else clean_sentences[0]
+            core_txt = core[0] if core else ""
+            takeaway_txt = takeaway[0] if takeaway else (clean_sentences[-1] if len(clean_sentences) > 1 else lead_txt)
 
             return (
                 f"### ⚡ Quick Summary: {doc_name}\n\n"
-                f"{lead} {core_finding}\n\n"
-                f"> 💡 **Core Takeaway**: {takeaway}\n\n"
+                f"{lead_txt} {core_txt}\n\n"
+                f"> 💡 **Core Takeaway**: {takeaway_txt}\n\n"
                 f"*Focus Domain: **{topics_str}***"
             )
 
@@ -180,40 +226,27 @@ class DocumentSummarizer:
         # MODE 2: Bullet Points (Categorized, rapid-skimming format)
         # -------------------------------------------------------------
         elif mode == "Bullet Points":
+            s_intro = pick_sentences(intro_sents, 2)
+            s_method = pick_sentences(method_sents, 2)
+            s_metric = pick_sentences(metric_sents, 2)
+            s_takeaway = pick_sentences(takeaway_sents, 2)
+
             lines = [
                 f"### 📌 Skimmable Bullet Points: {doc_name}\n",
-                f"*Key takeaways categorized by topic from automated NLP parsing:*\n",
-                "#### 🎯 Core Scope & Objective"
+                f"*Structured key takeaways categorized by domain from automated NLP parsing:*\n",
+                "#### 🎯 Core Scope & Objectives"
             ]
-            for s in intro_sents[:2]:
+            for s in s_intro:
                 lines.append(f"- {s}")
-
             lines.append("\n#### ⚙️ Technical Approach & Framework")
-            for s in tech_sents[:2]:
-                if s not in intro_sents[:2]:
-                    lines.append(f"- {s}")
-            if len(lines) == 5:  # ensure at least one tech bullet
-                lines.append(f"- Utilizes advanced methodologies centered on {topics_str}.")
-
+            for s in s_method:
+                lines.append(f"- {s}")
             lines.append("\n#### 📊 Key Results & Empirical Outcomes")
-            added_metrics = 0
-            for s in metric_sents[:3]:
-                if s not in intro_sents[:2] and s not in tech_sents[:2]:
-                    lines.append(f"- {s}")
-                    added_metrics += 1
-                if added_metrics >= 2:
-                    break
-            if added_metrics == 0 and top_ranked:
-                lines.append(f"- {top_ranked[0]}")
-
-            lines.append("\n#### 💡 Practical Implications")
-            for s in takeaway_sents[:2]:
-                if s not in lines:
-                    lines.append(f"- {s}")
-                    break
-            else:
-                lines.append(f"- Establishes critical practical benchmarks in **{topics_str}**.")
-
+            for s in s_metric:
+                lines.append(f"- {s}")
+            lines.append("\n#### 💡 Practical Implications & Next Steps")
+            for s in s_takeaway:
+                lines.append(f"- {s}")
             return "\n".join(lines)
 
         # -------------------------------------------------------------
@@ -224,16 +257,9 @@ class DocumentSummarizer:
                 f"### 🎯 Key Empirical Findings & Metrics: {doc_name}\n",
                 f"Primary empirical discoveries, benchmark metrics, and findings extracted from **{doc_name}**:\n"
             ]
-            findings_pool = []
-            for s in metric_sents:
-                if s not in findings_pool:
-                    findings_pool.append(s)
-            for s in top_ranked:
-                if s not in findings_pool:
-                    findings_pool.append(s)
-
-            for idx, s in enumerate(findings_pool[:5], 1):
-                lines.append(f"{idx}. **Empirical Finding {idx}**: {s}")
+            findings = pick_sentences(metric_sents + top_ranked, 5)
+            for idx, s in enumerate(findings, 1):
+                lines.append(f"{idx}. **Finding {idx}**: {s}")
 
             metrics_list = entities.get("Metrics & Percentages", [])
             if metrics_list:
@@ -241,29 +267,33 @@ class DocumentSummarizer:
                 lines.append(f"\n> 📈 **Extracted Quantitative Metrics**: {metric_badges}")
             else:
                 lines.append(f"\n> 📈 **Core Focus**: High statistical significance across **{topics_str}**.")
-
             return "\n".join(lines)
 
         # -------------------------------------------------------------
         # MODE 4: Executive Summary (C-Suite strategic briefing)
         # -------------------------------------------------------------
         elif mode == "Executive Summary":
-            lead = intro_sents[0] if intro_sents else clean_sentences[0]
-            val_sent = tech_sents[0] if tech_sents else (clean_sentences[1] if len(clean_sentences) > 1 else "")
-            res_sent = metric_sents[0] if metric_sents else (top_ranked[1] if len(top_ranked) > 1 else "")
-            takeaway = takeaway_sents[0] if takeaway_sents else clean_sentences[-1]
+            s_lead = pick_sentences(intro_sents, 1)
+            s_val = pick_sentences(method_sents, 1)
+            s_res = pick_sentences(metric_sents, 1)
+            s_takeaway = pick_sentences(takeaway_sents, 1)
+
+            lead_txt = s_lead[0] if s_lead else clean_sentences[0]
+            val_txt = s_val[0] if s_val else clean_sentences[1] if len(clean_sentences) > 1 else ""
+            res_txt = s_res[0] if s_res else ""
+            takeaway_txt = s_takeaway[0] if s_takeaway else clean_sentences[-1]
 
             lines = [
                 f"### 📋 Executive Summary: {doc_name}\n",
                 "#### 1. Strategic Context & Vision",
-                f"{lead} Addressing core challenges in **{topics_str}**, this work outlines strategic workflows and modern capabilities.\n",
+                f"{lead_txt} Addressing core requirements in **{topics_str}**, this work establishes vital operational benchmarks.\n",
                 "#### 2. Business & Operational Value",
-                f"{val_sent} By standardizing technical components, organizations can optimize throughput and improve operational efficiency.",
-                f"{res_sent}\n",
+                f"{val_txt} Streamlining these core methodologies delivers measurable efficiency gains and sustainable scalability.",
+                f"{res_txt}\n",
                 "#### 3. Strategic Recommendations & Next Steps",
-                f"- **Actionable Adoption**: Leverage the framework's core methodologies in **{topics_str}** to streamline technical execution.",
-                f"- **Benchmark Verification**: Track continuous improvement metrics against the reported empirical baselines.",
-                f"- **Implementation Strategy**: {takeaway}"
+                f"- **Actionable Adoption**: Leverage the framework's core methodologies in **{topics_str}** to streamline operations.",
+                f"- **Performance Tracking**: Continuously benchmark against the observed performance metrics and deliverables.",
+                f"- **Strategic Priority**: {takeaway_txt}"
             ]
             return "\n".join(lines)
 
@@ -271,31 +301,25 @@ class DocumentSummarizer:
         # MODE 5: Detailed Summary (Comprehensive multi-section review)
         # -------------------------------------------------------------
         else:
-            lead = intro_sents[0] if intro_sents else clean_sentences[0]
-            sec_intro = intro_sents[1] if len(intro_sents) > 1 else (clean_sentences[1] if len(clean_sentences) > 1 else "")
-            
+            sec1 = pick_sentences(intro_sents, 2)
+            sec2 = pick_sentences(method_sents, 2)
+            sec3 = pick_sentences(metric_sents, 2)
+            sec4 = pick_sentences(takeaway_sents, 1)
+
             lines = [
                 f"### 📑 Comprehensive Technical Summary: {doc_name}\n",
                 "#### 1. 📖 Background & Problem Statement",
-                f"{lead} {sec_intro}\n",
+                " ".join(sec1) + "\n",
                 "#### 2. 🔍 System Architecture & Technical Methodology"
             ]
-            for s in tech_sents[:3]:
-                if s != lead and s != sec_intro:
-                    lines.append(f"- **Mechanics**: {s}")
-            if len(lines) == 4 and clean_sentences:
-                lines.append(f"- **Methodology**: {clean_sentences[1] if len(clean_sentences) > 1 else clean_sentences[0]}")
-
+            for s in sec2:
+                lines.append(f"- **Methodology & Architecture**: {s}")
             lines.append("\n#### 3. 📊 Empirical Experiments, Benchmarks & Evidence")
-            for idx, s in enumerate(metric_sents[:3], 1):
-                lines.append(f"{idx}. {s}")
-            if len(metric_sents) == 0 and top_ranked:
-                lines.append(f"1. {top_ranked[0]}")
-
+            for idx, s in enumerate(sec3, 1):
+                lines.append(f"{idx}. **Observed Result**: {s}")
             lines.append("\n#### 4. 💡 Limitations, Critical Analysis & Future Directions")
-            conc = takeaway_sents[0] if takeaway_sents else clean_sentences[-1]
-            lines.append(f"{conc} Continued research in **{topics_str}** will focus on scaling, parameter efficiency, and expanded domain adaptation.")
-
+            conc = sec4[0] if sec4 else (clean_sentences[-1] if len(clean_sentences) > 1 else (sec1[0] if sec1 else clean_sentences[0]))
+            lines.append(f"{conc} Continued research and development in **{topics_str}** will focus on scaling, parameter efficiency, and expanded domain adaptation.")
             return "\n".join(lines)
 
     def summarize(self, text: str, mode: str = "Detailed Summary", doc_name: str = "Document") -> Dict[str, Any]:
@@ -392,16 +416,20 @@ class DocumentSummarizer:
             is_demo = True
             provider = "IntelliAssist Smart NLP Engine (Demo Mode)"
 
-        sentences = [s.strip().replace("\n", " ") for s in re.split(r'(?<=[.?!])\s+', text) if len(s.strip()) > 35]
+        # Clean sentences for takeaways metadata
+        cleaned_for_takeaways = re.sub(r'(?:\s*\.){2,}\s*', ' ', text)
+        cleaned_for_takeaways = re.sub(r'\.{2,}', ' ', cleaned_for_takeaways)
+        raw_tak_sents = re.split(r'(?:(?<=[.?!])\s+|\n\s*\n)', cleaned_for_takeaways)
+        tak_sents = [re.sub(r'\s+', ' ', s).strip() for s in raw_tak_sents if len(s.strip()) > 35 and not re.search(r'\.{2,}', s)]
         takeaways = []
-        for s in sentences:
+        for s in tak_sents:
             if any(w in s.lower() for w in ["conclude", "result", "achieve", "propose", "demonstrate", "show", "finding", "important", "improve", "significantly"]):
                 takeaways.append(s)
             if len(takeaways) >= 4:
                 break
 
-        if len(takeaways) < 3 and len(sentences) >= 3:
-            takeaways = sentences[:4]
+        if len(takeaways) < 3 and len(tak_sents) >= 3:
+            takeaways = tak_sents[:4]
 
         return {
             "mode": mode,

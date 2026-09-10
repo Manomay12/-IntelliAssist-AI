@@ -111,15 +111,32 @@ def load_document_registry() -> dict:
             return {}
     return {}
 
+def resolve_api_key_for_provider(provider: str, settings: dict) -> str:
+    """Safely map provider name to its corresponding API key."""
+    if "NVIDIA" in provider:
+        return settings.get("nvidia_api_key") or os.getenv("NVIDIA_API_KEY", "")
+    elif "OpenAI" in provider:
+        return settings.get("openai_api_key") or os.getenv("OPENAI_API_KEY", "")
+    elif "Gemini" in provider:
+        return settings.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")
+    return ""
+
 def initialize_state():
     """Initialize persistent session states and singleton services."""
     if "nav_page" not in st.session_state:
         st.session_state.nav_page = "Dashboard"
 
     if "settings" not in st.session_state:
+        if "NVIDIA" in DEFAULT_LLM_PROVIDER:
+            default_model = "meta/llama-3.2-11b-vision-instruct"
+        elif "OpenAI" in DEFAULT_LLM_PROVIDER:
+            default_model = "gpt-4o-mini"
+        else:
+            default_model = "gemini-flash-latest"
+
         st.session_state.settings = {
             "provider": DEFAULT_LLM_PROVIDER,
-            "model_name": "gemini-flash-latest",
+            "model_name": default_model,
             "temperature": DEFAULT_TEMPERATURE,
             "max_tokens": DEFAULT_MAX_TOKENS,
             "gemini_api_key": GEMINI_API_KEY,
@@ -136,12 +153,13 @@ def initialize_state():
 
     if "llm_service" not in st.session_state:
         s = st.session_state.settings
+        chosen_key = resolve_api_key_for_provider(s["provider"], s)
         st.session_state.llm_service = LLMService(
             provider=s["provider"],
             model_name=s["model_name"],
             temperature=s["temperature"],
             max_tokens=s["max_tokens"],
-            api_key=s.get("gemini_api_key") or s.get("nvidia_api_key") or s.get("openai_api_key")
+            api_key=chosen_key
         )
 
     if "rag_engine" not in st.session_state:
@@ -629,12 +647,13 @@ elif st.session_state.nav_page == "History":
 elif st.session_state.nav_page == "Settings":
     def handle_save_settings(new_settings: Dict[str, Any]):
         st.session_state.settings.update(new_settings)
+        chosen_key = resolve_api_key_for_provider(new_settings["provider"], new_settings)
         st.session_state.llm_service = LLMService(
             provider=new_settings["provider"],
             model_name=new_settings["model_name"],
             temperature=new_settings["temperature"],
             max_tokens=new_settings["max_tokens"],
-            api_key=new_settings.get("gemini_api_key") or new_settings.get("nvidia_api_key") or new_settings.get("openai_api_key")
+            api_key=chosen_key
         )
         st.session_state.rag_engine.llm_service = st.session_state.llm_service
         st.session_state.summarizer.llm_service = st.session_state.llm_service
