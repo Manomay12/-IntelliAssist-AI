@@ -29,6 +29,11 @@ def render_search_page(
     </div>
     """, unsafe_allow_html=True)
 
+    # If a suggested inquiry was clicked, update the text input's state BEFORE it is instantiated
+    if "pending_search_query" in st.session_state and st.session_state.pending_search_query:
+        st.session_state.semantic_search_input = st.session_state.pending_search_query
+        st.session_state.pending_search_query = None
+
     # Search Configuration Bar
     col_input, col_doc = st.columns([3.5, 1.5])
     with col_input:
@@ -89,7 +94,7 @@ def render_search_page(
                 if len(short_label) > 26:
                     short_label = short_label[:24] + ".."
                 if st.button(f"🔍 {short_label}", key=f"sug_btn_{s_idx}_{st.session_state.search_sug_seed}_{doc_filter}", help=sq, use_container_width=True):
-                    st.session_state.semantic_search_input = sq
+                    st.session_state.pending_search_query = sq
                     st.rerun()
 
     with st.expander("⚙️ Advanced Search Tuning", expanded=False):
