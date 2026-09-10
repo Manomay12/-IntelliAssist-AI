@@ -64,7 +64,7 @@ class RAGEngine:
             normalized = re.sub(pattern, replacement, normalized)
 
         # 3. Detect broad summary / overview intents
-        if re.search(r"^(?:summary|overview|what does this say|explain|tell me everything|main points|key points|what is this about)\b", normalized):
+        if re.search(r"^(?:summary|overview|what (?:does |is )?this (?:document |doc |pdf )?say|explain|tell me everything|main points|key points|what is this about)\b", normalized):
             expanded = f"Provide a comprehensive executive summary, technical breakdown, and key findings of the documents: {normalized}"
             return expanded, "summary", False
 
@@ -257,18 +257,35 @@ class RAGEngine:
 
         full_context = "\n\n".join(context_parts)
 
-        # 6. Formulate exhaustive academic RAG system instruction
-        target_clause = f"Focus your answer strictly and exclusively on the document '{active_filter_doc}'." if active_filter_doc else "Compare and synthesize findings across all provided documents."
+        # 6. Formulate intelligent, query-specific RAG system instruction
+        target_clause = f"Focus your answer strictly and exclusively on the document '{active_filter_doc}'." if active_filter_doc else "Synthesize information from the relevant document(s) provided."
+        
+        is_summary_request = bool(re.search(r"\b(?:summary|summarize|overview|full breakdown|tell me everything|main points|all findings)\b", raw_question, re.IGNORECASE))
+        
+        if is_summary_request:
+            style_guide = (
+                "The user requested a broad summary or overview. Provide a well-structured response with:\n"
+                "1. 🎯 Executive Overview & Main Takeaways\n"
+                "2. 🔍 Core Methodology & Key Concepts\n"
+                "3. 📊 Notable Findings & Metrics\n"
+                "Keep each section focused and clearly formatted."
+            )
+        else:
+            style_guide = (
+                "CRITICAL INSTRUCTION: Answer the specific question directly, concisely, and factually.\n"
+                "- Do NOT repeat an entire unrequested document introduction, executive summary, or full-context dump.\n"
+                "- Provide a direct, targeted answer to what was asked, supported by specific details and numbers from the context.\n"
+                "- For factual/lookup questions (who, what, when, how much/many), provide the answer right away in the first sentence.\n"
+                "- For conceptual or 'how' questions, explain the specific mechanism clearly with relevant technical points."
+            )
+
         system_instruction = (
-            f"You are IntelliAssist AI, an expert academic document intelligence system. {target_clause}\n"
-            "Your objective is to provide exhaustive, comprehensive, and thoroughly explained answers based on the provided document context.\n\n"
-            "Structure every response into these clear sections:\n"
-            "1. 🎯 Executive Summary & Direct Answer: A clear, complete synthesis of the answer.\n"
-            "2. 🔍 In-Depth Technical Breakdown: Detailed mechanisms, formulas, architectures, or methodologies.\n"
-            "3. 📊 Empirical Findings & Evidence: Concrete metrics, numbers, comparisons, and findings cited by page.\n"
-            "4. 💡 Practical Implications & Use Cases: Real-world significance, advantages, and trade-offs.\n"
-            "5. ❓ Suggested Follow-Up Questions: 2-3 specific follow-up questions to explore next.\n\n"
-            "Always cite document names and page numbers (e.g., [Ref: filename, Page X]). Never invent facts not present in the context."
+            f"You are IntelliAssist AI, an expert document intelligence assistant. {target_clause}\n\n"
+            f"{style_guide}\n\n"
+            "Guidelines:\n"
+            "- Ground your response strictly in the provided DOCUMENT CONTEXT.\n"
+            "- Always cite specific document names and page numbers (e.g., [Ref: filename, Page X]) for facts and metrics.\n"
+            "- If the provided context does not contain the answer, state clearly that it is not covered in the document."
         )
 
         rag_prompt = (
@@ -278,7 +295,7 @@ class RAGEngine:
             f"---------------------\n\n"
             f"USER QUERY: {raw_question}\n"
             f"TARGET DOCUMENT: {active_filter_doc or 'All Documents'}\n\n"
-            f"Please provide an exhaustive, multi-section, and well-explained response based strictly on the context above."
+            f"Please answer the user query directly based on the context above."
         )
 
         # 7. Generate answer via LLM service

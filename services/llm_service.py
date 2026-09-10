@@ -14,22 +14,29 @@ class LLMService:
 
     def __init__(
         self,
-        provider: str = "Google Gemini",
-        model_name: str = "gemini-flash-latest",
+        provider: Optional[str] = None,
+        model_name: Optional[str] = None,
         temperature: float = 0.3,
         max_tokens: int = 2048,
         api_key: Optional[str] = None
     ):
-        self.provider = provider
-        self.model_name = model_name
+        env_provider = os.getenv("DEFAULT_LLM_PROVIDER")
+        self.provider = provider or env_provider or "Google Gemini"
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.api_key = (
-            api_key
-            or os.getenv("GEMINI_API_KEY")
-            or os.getenv("NVIDIA_API_KEY")
-            or os.getenv("OPENAI_API_KEY", "")
-        )
+
+        if "NVIDIA" in self.provider:
+            self.api_key = api_key or os.getenv("NVIDIA_API_KEY", "")
+            self.model_name = model_name or "meta/llama-3.2-11b-vision-instruct"
+        elif "Gemini" in self.provider:
+            self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+            self.model_name = model_name or "gemini-flash-latest"
+        elif "OpenAI" in self.provider:
+            self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
+            self.model_name = model_name or "gpt-4o-mini"
+        else:
+            self.api_key = api_key or ""
+            self.model_name = model_name or "Academic-Local-DeepNLP-v3"
 
     def generate(
         self,
@@ -46,7 +53,7 @@ class LLMService:
             try:
                 key = self.api_key or os.getenv("GEMINI_API_KEY")
                 from google import genai
-                client = genai.Client(api_key=key)
+                client = genai.Client(api_key=key, http_options={"timeout": 12.0})
                 
                 full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
                 model_to_use = self.model_name
@@ -219,117 +226,194 @@ class LLMService:
                 seen.add(s_key)
                 clean_sentences.append((s, d, p))
 
+        # Extract user query from prompt
+        user_query = ""
+        q_match = re.search(r'USER QUERY:\s*([^\n]+)', prompt)
+        if q_match:
+            user_query = q_match.group(1).strip()
+        elif "USER:" in prompt:
+            user_query = prompt.split("USER:")[-1].strip()
+        else:
+            user_query = prompt.strip()
+
+        q_lower = user_query.lower()
+
+        # Check if user specifically requested a broad summary or complete overview
+        is_summary_request = bool(re.search(
+            r'\b(?:summary|summarize|overview|full breakdown|tell me everything|main points|all findings|complete analysis)\b',
+            q_lower
+        ))
+
+        # Extract question keywords for targeted scoring
+        stop_words = {
+            "what", "is", "are", "the", "a", "an", "in", "on", "for", "of", "to", "and",
+            "tell", "explain", "about", "me", "can", "you", "does", "do", "this", "that",
+            "how", "why", "who", "when", "where", "which", "with", "from", "by", "at",
+            "paper", "document", "pdf", "docx", "txt", "please", "give", "show", "find"
+        }
+        q_tokens = [w for w in re.findall(r'\b[a-zA-Z0-9_-]{3,}\b', q_lower) if w not in stop_words]
+
+        scored_candidates = []
+        for s, d, p in clean_sentences:
+            s_lower = s.lower()
+            score = 0.0
+            for t in q_tokens:
+                if t in s_lower:
+                    score += 2.5
+                    if re.search(r'\b' + re.escape(t) + r'\b', s_lower):
+                        score += 1.5
+
+            for i in range(len(q_tokens) - 1):
+                phrase = f"{q_tokens[i]} {q_tokens[i+1]}"
+                if phrase in s_lower:
+                    score += 4.0
+
+            # Query intent boosts
+            if any(w in q_lower for w in ["bleu", "score", "metric", "accuracy", "%", "number", "how many", "how much", "benchmark", "result", "f1", "evaluat"]):
+                if re.search(r'\b(?:\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:BLEU|F1|accuracy|ms|seconds|GB|MB|parameters|users|requests|GPUs?|days?))\b', s, re.IGNORECASE):
+                    score += 5.0
+                elif re.search(r'\b(?:achiev|outperform|score|benchmark|result|evaluat)\b', s_lower):
+                    score += 3.0
+
+            if any(w in q_lower for w in ["who", "author", "writer", "team", "organization", "university", "institute", "affiliation"]):
+                if any(w in s_lower for w in ["author", "propose", "we present", "researcher", "university", "google", "team", "developed by"]):
+                    score += 5.0
+
+            if any(w in q_lower for w in ["how", "architecture", "mechanism", "work", "algorithm", "method", "pipeline", "attention", "transformer"]):
+                if any(w in s_lower for w in ["mechanism", "architecture", "algorithm", "attention", "transformer", "layer", "encoder", "decoder", "process", "pipeline"]):
+                    score += 4.0
+
+            if any(w in q_lower for w in ["why", "purpose", "goal", "objective", "aim", "motivation"]):
+                if any(w in s_lower for w in ["purpose", "goal", "objective", "aim", "in order to", "to address", "designed to"]):
+                    score += 4.0
+
+            if any(w in q_lower for w in ["limit", "limitation", "drawback", "weakness", "challenge", "future"]):
+                if any(w in s_lower for w in ["limit", "challenge", "future", "bottleneck", "lack", "however"]):
+                    score += 4.0
+
+            scored_candidates.append((score, s, d, p))
+
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+
         response_lines = []
+        target_doc_display = target_doc_name if target_doc_name and target_doc_name != "All Documents" else doc_name
 
-        if is_multi_doc:
-            # Multi-document comparative response
-            response_lines.append(f"## 📚 Multi-Document Comparative Intelligence: **{', '.join(unique_docs)}**\n")
-            
-            response_lines.append("### 🎯 1. Cross-Document Executive Summary")
-            response_lines.append(
-                f"An aggregate analysis across **{len(unique_docs)} indexed documents** "
-                f"({', '.join([f'`{d}`' for d in unique_docs])}) was performed:"
-            )
-            for d in unique_docs:
-                d_sents = doc_sentence_map.get(d, [])
-                if d_sents:
-                    response_lines.append(f"- **📄 {d}** (Page {d_sents[0][1]}): {d_sents[0][0]}")
-            response_lines.append("")
-
-            response_lines.append("### 🔍 2. Per-Document Deep Technical Breakdown")
-            for d in unique_docs:
-                d_sents = doc_sentence_map.get(d, [])
-                response_lines.append(f"#### 📄 Document Analysis: `{d}`")
-                if len(d_sents) > 1:
-                    for s, p in d_sents[1:4]:
-                        response_lines.append(f"- {s} `[Page {p}]`")
-                elif d_sents:
-                    response_lines.append(f"- {d_sents[0][0]} `[Page {d_sents[0][1]}]`")
+        if is_summary_request:
+            # User specifically asked for a broad summary or full breakdown
+            if is_multi_doc:
+                response_lines.append(f"## 📚 Multi-Document Comparative Intelligence: **{', '.join(unique_docs)}**\n")
+                response_lines.append("### 🎯 1. Cross-Document Executive Summary")
+                response_lines.append(
+                    f"An aggregate analysis across **{len(unique_docs)} indexed documents** "
+                    f"({', '.join([f'`{d}`' for d in unique_docs])}) was performed:"
+                )
+                for d in unique_docs:
+                    d_sents = doc_sentence_map.get(d, [])
+                    if d_sents:
+                        response_lines.append(f"- **📄 {d}** (Page {d_sents[0][1]}): {d_sents[0][0]}")
                 response_lines.append("")
 
-            response_lines.append("### 📊 3. Key Findings & Cross-Comparison")
-            for idx, (s, d, p) in enumerate(clean_sentences[:5], 1):
-                response_lines.append(f"{idx}. **Finding**: {s} *(Source: `{d}`, Page {p})*")
-            response_lines.append("")
+                response_lines.append("### 🔍 2. Per-Document Deep Technical Breakdown")
+                for d in unique_docs:
+                    d_sents = doc_sentence_map.get(d, [])
+                    response_lines.append(f"#### 📄 Document Analysis: `{d}`")
+                    if len(d_sents) > 1:
+                        for s, p in d_sents[1:4]:
+                            response_lines.append(f"- {s} `[Page {p}]`")
+                    elif d_sents:
+                        response_lines.append(f"- {d_sents[0][0]} `[Page {d_sents[0][1]}]`")
+                    response_lines.append("")
 
-            response_lines.append("### 💡 4. Synthesis & Practical Impact")
-            response_lines.append(
-                f"Comparing these {len(unique_docs)} documents demonstrates complementary methodologies. "
-                f"Together, they form a cohesive knowledge graph for document intelligence and evaluation."
-            )
-            response_lines.append("")
+                response_lines.append("### 📊 3. Key Findings & Cross-Comparison")
+                for idx, (s, d, p) in enumerate(clean_sentences[:5], 1):
+                    response_lines.append(f"{idx}. **Finding**: {s} *(Source: `{d}`, Page {p})*")
+                response_lines.append("")
 
-            response_lines.append("---")
-            response_lines.append("### ❓ Suggested Follow-Up Questions:")
-            for d in unique_docs[:2]:
-                response_lines.append(f"- *\"What are the specific technical metrics in {d}?\"*")
-            response_lines.append("- *\"Compare the methodological differences between these documents.\"*")
+                response_lines.append("### 💡 4. Synthesis & Practical Impact")
+                response_lines.append(
+                    f"Comparing these {len(unique_docs)} documents demonstrates complementary methodologies. "
+                    f"Together, they form a cohesive knowledge graph for document intelligence and evaluation."
+                )
+            else:
+                lead_sentences = clean_sentences[:2]
+                technical_sentences = clean_sentences[2:5] if len(clean_sentences) >= 5 else clean_sentences[1:3]
+                evidence_sentences = clean_sentences[5:8] if len(clean_sentences) >= 8 else clean_sentences[2:4]
+                implication_sentences = clean_sentences[8:11] if len(clean_sentences) >= 11 else clean_sentences[1:3]
+
+                response_lines.append(f"## 📖 Comprehensive Analysis: **{target_doc_display}**\n")
+                
+                response_lines.append("### 🎯 1. Direct Executive Summary & Core Answer")
+                if lead_sentences:
+                    for s, d, p in lead_sentences:
+                        response_lines.append(f"> {s} *(Ref: {target_doc_display}, Page {p})*")
+                else:
+                    top_t = chunks_to_use[0].get("text", "") if chunks_to_use else ""
+                    response_lines.append(f"> {top_t[:350]}")
+                response_lines.append("")
+
+                response_lines.append("### 🔍 2. In-Depth Technical Breakdown & Methodology")
+                response_lines.append(f"An exhaustive review of **{target_doc_display}** reveals the following core mechanisms:")
+                if technical_sentences:
+                    for idx, (s, d, p) in enumerate(technical_sentences, 1):
+                        response_lines.append(f"- **Mechanism {idx}**: {s} *(Page {p})*")
+                elif clean_sentences:
+                    for idx, (s, d, p) in enumerate(clean_sentences[:3], 1):
+                        response_lines.append(f"- **Key Point {idx}**: {s} *(Page {p})*")
+                response_lines.append("")
+
+                response_lines.append("### 📊 3. Grounded Findings & Document Evidence")
+                response_lines.append("The document presents the following analytical results and evidence:")
+                if evidence_sentences:
+                    for idx, (s, d, p) in enumerate(evidence_sentences, 1):
+                        response_lines.append(f"{idx}. **Finding**: {s} `[Page {p}]`")
+                elif clean_sentences:
+                    for idx, (s, d, p) in enumerate(clean_sentences[:3], 1):
+                        response_lines.append(f"{idx}. **Detail**: {s} `[Page {p}]`")
+                response_lines.append("")
+
+                response_lines.append("### 💡 4. Practical Implications & Significance")
+                if implication_sentences:
+                    for s, d, p in implication_sentences:
+                        response_lines.append(f"- *{s}*")
+                else:
+                    response_lines.append(
+                        f"The concepts documented in **{target_doc_display}** establish critical foundations for academic research, "
+                        f"system implementation, and real-world deployment."
+                    )
 
         else:
-            # Single-document deep explanation
-            target_doc_display = target_doc_name if target_doc_name and target_doc_name != "All Documents" else doc_name
-            page_num = chunks_to_use[0].get("page_number", 1) if chunks_to_use else 1
+            # TARGETED SPECIFIC ANSWER (Addresses the user's specific question directly!)
+            best_candidates = [c for c in scored_candidates if c[0] > 0]
+            if not best_candidates:
+                best_candidates = scored_candidates[:3]
 
-            lead_sentences = clean_sentences[:2]
-            technical_sentences = clean_sentences[2:5] if len(clean_sentences) >= 5 else clean_sentences[1:3]
-            evidence_sentences = clean_sentences[5:8] if len(clean_sentences) >= 8 else clean_sentences[2:4]
-            implication_sentences = clean_sentences[8:11] if len(clean_sentences) >= 11 else clean_sentences[1:3]
+            top_ans = best_candidates[0]
+            supporting = best_candidates[1:4]
 
-            response_lines.append(f"## 📖 Comprehensive Analysis: **{target_doc_display}**\n")
-            
-            # Section 1: Executive Overview
-            response_lines.append("### 🎯 1. Direct Executive Summary & Core Answer")
-            if lead_sentences:
-                for s, d, p in lead_sentences:
-                    response_lines.append(f"> {s} *(Ref: {target_doc_display}, Page {p})*")
+            if is_multi_doc:
+                response_lines.append(f"## 💡 Direct Answer from **{', '.join(unique_docs)}**\n")
             else:
-                top_t = chunks_to_use[0].get("text", "") if chunks_to_use else ""
-                response_lines.append(f"> {top_t[:350]}")
-            response_lines.append("")
+                response_lines.append(f"## 💡 Targeted Answer: **{target_doc_display}**\n")
 
-            # Section 2: Detailed Technical Explanation & Mechanisms
-            response_lines.append("### 🔍 2. In-Depth Technical Breakdown & Methodology")
-            response_lines.append(f"An exhaustive review of **{target_doc_display}** reveals the following core mechanisms:")
-            if technical_sentences:
-                for idx, (s, d, p) in enumerate(technical_sentences, 1):
-                    response_lines.append(f"- **Mechanism {idx}**: {s} *(Page {p})*")
-            elif clean_sentences:
-                for idx, (s, d, p) in enumerate(clean_sentences[:3], 1):
-                    response_lines.append(f"- **Key Point {idx}**: {s} *(Page {p})*")
-            else:
-                top_t = chunks_to_use[0].get("text", "") if chunks_to_use else ""
-                response_lines.append(f"- {top_t[:280]}")
-            response_lines.append("")
+            # Direct focused answer
+            response_lines.append("### 🎯 Direct Answer:")
+            response_lines.append(f"> **{top_ans[1]}**\n> *(Source: `{top_ans[2]}`, Page {top_ans[3]})*\n")
 
-            # Section 3: Empirical Findings, Data Points & Evidence
-            response_lines.append("### 📊 3. Grounded Findings & Document Evidence")
-            response_lines.append("The document presents the following analytical results and evidence:")
-            if evidence_sentences:
-                for idx, (s, d, p) in enumerate(evidence_sentences, 1):
-                    response_lines.append(f"{idx}. **Finding**: {s} `[Page {p}]`")
-            elif clean_sentences:
-                for idx, (s, d, p) in enumerate(clean_sentences[:3], 1):
-                    response_lines.append(f"{idx}. **Detail**: {s} `[Page {p}]`")
-            response_lines.append("")
+            # Supporting details relevant strictly to the question
+            valid_supporting = [c for c in supporting if c[1] != top_ans[1]]
+            if valid_supporting:
+                response_lines.append("### 🔍 Supporting Evidence & Context:")
+                for _, s_text, s_doc, s_page in valid_supporting:
+                    response_lines.append(f"- {s_text} `[Ref: {s_doc}, Page {s_page}]`")
+                response_lines.append("")
 
-            # Section 4: Practical Significance & Real-World Impact
-            response_lines.append("### 💡 4. Practical Implications & Significance")
-            response_lines.append(
-                f"The concepts documented in **{target_doc_display}** establish critical foundations for academic research, "
-                f"system implementation, and real-world deployment. Key advantages include enhanced accuracy, "
-                f"structured verification, and robust contextual grounding."
-            )
-            if implication_sentences:
-                for s, d, p in implication_sentences:
-                    response_lines.append(f"- *{s}*")
-            response_lines.append("")
-
-            # Section 5: Follow-Up Questions
-            response_lines.append("---")
-            response_lines.append("### ❓ Suggested Deep-Dive Follow-Up Questions:")
-            response_lines.append(f"- *\"What are the primary architectural trade-offs discussed in {target_doc_display}?\"*")
-            response_lines.append(f"- *\"Can you compare experimental metrics and accuracy benchmarks in detail?\"*")
-            response_lines.append(f"- *\"What future research directions or limitations are mentioned in {target_doc_display}?\"*")
+            # Additional key finding or metric if relevant
+            other_findings = [c for c in best_candidates[4:6] if c[1] not in [top_ans[1]] + [s[1] for s in supporting]]
+            if other_findings:
+                response_lines.append("### 📊 Relevant Metrics & Observations:")
+                for _, s_text, s_doc, s_page in other_findings:
+                    response_lines.append(f"- {s_text} *(Page {s_page})*")
+                response_lines.append("")
 
         confidence_pct = chunks_to_use[0].get('similarity_percentage', 95) if chunks_to_use else 95
         response_lines.append(f"\n*Grounded in **{len(chunks_to_use)}** semantic chunks with **{confidence_pct}%** vector similarity.*")

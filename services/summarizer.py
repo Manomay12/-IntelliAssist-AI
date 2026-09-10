@@ -88,86 +88,214 @@ class DocumentSummarizer:
 
     def _generate_smart_local_summary(self, text: str, mode: str, doc_name: str) -> str:
         """
-        Generate high-quality multi-mode structured summary locally
-        using sentence centrality ranking and keyword extraction.
+        Generate high-quality, mode-specific structured summary locally
+        using sentence classification, keyword extraction, and tailored layouts.
         """
         raw_sentences = re.split(r'(?<=[.?!])\s+', text)
-        sentences = [s.strip().replace("\n", " ") for s in raw_sentences if len(s.strip()) > 25]
+        sentences = [s.strip().replace("\n", " ") for s in raw_sentences if len(s.strip()) > 20]
 
         if not sentences:
             return f"**Summary of {doc_name}**\n\nThe document contains minimal textual content."
 
+        # Deduplicate sentences while preserving chronological sequence
+        seen = set()
+        clean_sentences = []
+        for s in sentences:
+            k = s.lower()[:45]
+            if k not in seen:
+                seen.add(k)
+                clean_sentences.append(s)
+
         words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
         word_freq = Counter(words)
 
+        # Scored sentences by word importance
         scored_sentences = []
-        for i, s in enumerate(sentences):
+        for i, s in enumerate(clean_sentences):
             s_words = re.findall(r'\b[a-zA-Z]{3,}\b', s.lower())
             if not s_words:
                 continue
             score = sum(word_freq.get(w, 0) for w in s_words) / len(s_words)
-            if i < 5:
-                score *= 1.3
+            if i < 4:
+                score *= 1.35
             scored_sentences.append((score, i, s))
 
         scored_sentences.sort(key=lambda x: x[0], reverse=True)
-        top_sentences = [item[2] for item in scored_sentences[:8]]
-        top_chrono = sorted(scored_sentences[:6], key=lambda x: x[1])
-        top_chrono_sentences = [item[2] for item in top_chrono]
+        top_ranked = [item[2] for item in scored_sentences]
+
+        # Categorize sentences into functional roles
+        metric_pattern = re.compile(
+            r'\b(?:\d+(?:\.\d+)?%|\d+(?:\.\d+)?\s*(?:BLEU|F1|accuracy|ms|seconds|GB|MB|parameters|users|requests|GPUs?|days?|times?|higher|lower|improvement))\b|'
+            r'\b(?:achiev|outperform|increas|decreas|result|benchmark|state-of-the-art|sota|evaluat)\b',
+            re.IGNORECASE
+        )
+        intro_pattern = re.compile(
+            r'\b(?:introduc|propos|present|focus|aim|objectiv|paper|document|overview|background|design|address|we build|we study)\b',
+            re.IGNORECASE
+        )
+        tech_pattern = re.compile(
+            r'\b(?:architecture|mechanism|model|algorithm|transformer|attention|neural|network|layer|embedding|encoder|decoder|pipeline|methodology|technique|framework|retriev)\b',
+            re.IGNORECASE
+        )
+        takeaway_pattern = re.compile(
+            r'\b(?:conclud|demonstrat|show|indicat|highlight|implication|takeaway|futur|significan|impact|recommend|promis|crucial|superior)\b',
+            re.IGNORECASE
+        )
+
+        metric_sents = [s for s in clean_sentences if metric_pattern.search(s)]
+        intro_sents = [s for s in clean_sentences if intro_pattern.search(s)]
+        tech_sents = [s for s in clean_sentences if tech_pattern.search(s)]
+        takeaway_sents = [s for s in clean_sentences if takeaway_pattern.search(s)]
+
+        # Fallbacks if specific category lists are sparse
+        if not intro_sents:
+            intro_sents = clean_sentences[:2]
+        if not metric_sents:
+            metric_sents = top_ranked[:4]
+        if not tech_sents:
+            tech_sents = clean_sentences[1:4] if len(clean_sentences) > 3 else clean_sentences
+        if not takeaway_sents:
+            takeaway_sents = clean_sentences[-3:] if len(clean_sentences) >= 3 else clean_sentences
 
         topics = self.extract_key_topics(text, max_topics=5)
         topics_str = ", ".join(topics) if topics else "Document Analysis"
+        entities = self.extract_entities(text)
 
+        # -------------------------------------------------------------
+        # MODE 1: Quick Summary (Ultra-concise TL;DR, <100 words)
+        # -------------------------------------------------------------
         if mode == "Quick Summary":
-            lead = top_chrono_sentences[0] if top_chrono_sentences else sentences[0]
-            second = top_chrono_sentences[1] if len(top_chrono_sentences) > 1 else ""
+            lead = intro_sents[0] if intro_sents else clean_sentences[0]
+            core_finding = metric_sents[0] if metric_sents and metric_sents[0] != lead else (tech_sents[0] if tech_sents else "")
+            takeaway = takeaway_sents[0] if takeaway_sents and takeaway_sents[0] not in [lead, core_finding] else (clean_sentences[-1] if len(clean_sentences) > 1 else lead)
+
             return (
                 f"### ⚡ Quick Summary: {doc_name}\n\n"
-                f"{lead} {second}\n\n"
-                f"**Key Focus Area:** Focuses primarily on {topics_str}."
+                f"{lead} {core_finding}\n\n"
+                f"> 💡 **Core Takeaway**: {takeaway}\n\n"
+                f"*Focus Domain: **{topics_str}***"
             )
+
+        # -------------------------------------------------------------
+        # MODE 2: Bullet Points (Categorized, rapid-skimming format)
+        # -------------------------------------------------------------
         elif mode == "Bullet Points":
-            lines = [f"### 📌 Key Summary Points: {doc_name}\n"]
-            for idx, s in enumerate(top_chrono_sentences[:5], 1):
-                lines.append(f"- **Point {idx}**: {s}")
+            lines = [
+                f"### 📌 Skimmable Bullet Points: {doc_name}\n",
+                f"*Key takeaways categorized by topic from automated NLP parsing:*\n",
+                "#### 🎯 Core Scope & Objective"
+            ]
+            for s in intro_sents[:2]:
+                lines.append(f"- {s}")
+
+            lines.append("\n#### ⚙️ Technical Approach & Framework")
+            for s in tech_sents[:2]:
+                if s not in intro_sents[:2]:
+                    lines.append(f"- {s}")
+            if len(lines) == 5:  # ensure at least one tech bullet
+                lines.append(f"- Utilizes advanced methodologies centered on {topics_str}.")
+
+            lines.append("\n#### 📊 Key Results & Empirical Outcomes")
+            added_metrics = 0
+            for s in metric_sents[:3]:
+                if s not in intro_sents[:2] and s not in tech_sents[:2]:
+                    lines.append(f"- {s}")
+                    added_metrics += 1
+                if added_metrics >= 2:
+                    break
+            if added_metrics == 0 and top_ranked:
+                lines.append(f"- {top_ranked[0]}")
+
+            lines.append("\n#### 💡 Practical Implications")
+            for s in takeaway_sents[:2]:
+                if s not in lines:
+                    lines.append(f"- {s}")
+                    break
+            else:
+                lines.append(f"- Establishes critical practical benchmarks in **{topics_str}**.")
+
             return "\n".join(lines)
+
+        # -------------------------------------------------------------
+        # MODE 3: Key Findings (Empirical benchmarks, metrics, breakthroughs)
+        # -------------------------------------------------------------
         elif mode == "Key Findings":
             lines = [
-                f"### 🎯 Key Findings & Insights: {doc_name}\n",
-                f"Based on automated NLP analysis of **{doc_name}**, the primary findings include:\n"
+                f"### 🎯 Key Empirical Findings & Metrics: {doc_name}\n",
+                f"Primary empirical discoveries, benchmark metrics, and findings extracted from **{doc_name}**:\n"
             ]
-            for idx, s in enumerate(top_sentences[:4], 1):
-                lines.append(f"{idx}. **Finding {idx}**: {s}")
-            lines.append(f"\n> **Core Impact**: The findings highlight significant relevance in **{topics_str}**.")
+            findings_pool = []
+            for s in metric_sents:
+                if s not in findings_pool:
+                    findings_pool.append(s)
+            for s in top_ranked:
+                if s not in findings_pool:
+                    findings_pool.append(s)
+
+            for idx, s in enumerate(findings_pool[:5], 1):
+                lines.append(f"{idx}. **Empirical Finding {idx}**: {s}")
+
+            metrics_list = entities.get("Metrics & Percentages", [])
+            if metrics_list:
+                metric_badges = " • ".join([f"`{m}`" for m in metrics_list[:6]])
+                lines.append(f"\n> 📈 **Extracted Quantitative Metrics**: {metric_badges}")
+            else:
+                lines.append(f"\n> 📈 **Core Focus**: High statistical significance across **{topics_str}**.")
+
             return "\n".join(lines)
+
+        # -------------------------------------------------------------
+        # MODE 4: Executive Summary (C-Suite strategic briefing)
+        # -------------------------------------------------------------
         elif mode == "Executive Summary":
+            lead = intro_sents[0] if intro_sents else clean_sentences[0]
+            val_sent = tech_sents[0] if tech_sents else (clean_sentences[1] if len(clean_sentences) > 1 else "")
+            res_sent = metric_sents[0] if metric_sents else (top_ranked[1] if len(top_ranked) > 1 else "")
+            takeaway = takeaway_sents[0] if takeaway_sents else clean_sentences[-1]
+
             lines = [
                 f"### 📋 Executive Summary: {doc_name}\n",
-                "#### 1. Strategic Overview",
-                f"{top_chrono_sentences[0] if top_chrono_sentences else sentences[0]}\n",
-                "#### 2. Key Observations & Findings"
+                "#### 1. Strategic Context & Vision",
+                f"{lead} Addressing core challenges in **{topics_str}**, this work outlines strategic workflows and modern capabilities.\n",
+                "#### 2. Business & Operational Value",
+                f"{val_sent} By standardizing technical components, organizations can optimize throughput and improve operational efficiency.",
+                f"{res_sent}\n",
+                "#### 3. Strategic Recommendations & Next Steps",
+                f"- **Actionable Adoption**: Leverage the framework's core methodologies in **{topics_str}** to streamline technical execution.",
+                f"- **Benchmark Verification**: Track continuous improvement metrics against the reported empirical baselines.",
+                f"- **Implementation Strategy**: {takeaway}"
             ]
-            for s in top_chrono_sentences[1:4]:
-                lines.append(f"- {s}")
-            lines.extend([
-                "\n#### 3. Scope & Implications",
-                f"This document centers on **{topics_str}**, providing actionable context and technical depth for researchers and stakeholders."
-            ])
             return "\n".join(lines)
+
+        # -------------------------------------------------------------
+        # MODE 5: Detailed Summary (Comprehensive multi-section review)
+        # -------------------------------------------------------------
         else:
+            lead = intro_sents[0] if intro_sents else clean_sentences[0]
+            sec_intro = intro_sents[1] if len(intro_sents) > 1 else (clean_sentences[1] if len(clean_sentences) > 1 else "")
+            
             lines = [
-                f"### 📑 Comprehensive Summary: {doc_name}\n",
-                "#### 📖 Introduction & Background",
-                f"{top_chrono_sentences[0] if top_chrono_sentences else sentences[0]}\n",
-                "#### 🔍 Core Details & Methodology"
+                f"### 📑 Comprehensive Technical Summary: {doc_name}\n",
+                "#### 1. 📖 Background & Problem Statement",
+                f"{lead} {sec_intro}\n",
+                "#### 2. 🔍 System Architecture & Technical Methodology"
             ]
-            for s in top_chrono_sentences[1:4]:
-                lines.append(f"- {s}")
-            if len(top_chrono_sentences) > 4:
-                lines.extend([
-                    "\n#### 💡 Conclusions & Practical Takeaways",
-                    f"{top_chrono_sentences[4]}"
-                ])
+            for s in tech_sents[:3]:
+                if s != lead and s != sec_intro:
+                    lines.append(f"- **Mechanics**: {s}")
+            if len(lines) == 4 and clean_sentences:
+                lines.append(f"- **Methodology**: {clean_sentences[1] if len(clean_sentences) > 1 else clean_sentences[0]}")
+
+            lines.append("\n#### 3. 📊 Empirical Experiments, Benchmarks & Evidence")
+            for idx, s in enumerate(metric_sents[:3], 1):
+                lines.append(f"{idx}. {s}")
+            if len(metric_sents) == 0 and top_ranked:
+                lines.append(f"1. {top_ranked[0]}")
+
+            lines.append("\n#### 4. 💡 Limitations, Critical Analysis & Future Directions")
+            conc = takeaway_sents[0] if takeaway_sents else clean_sentences[-1]
+            lines.append(f"{conc} Continued research in **{topics_str}** will focus on scaling, parameter efficiency, and expanded domain adaptation.")
+
             return "\n".join(lines)
 
     def summarize(self, text: str, mode: str = "Detailed Summary", doc_name: str = "Document") -> Dict[str, Any]:
@@ -187,21 +315,73 @@ class DocumentSummarizer:
         topics = self.extract_key_topics(text)
         entities = self.extract_entities(text)
 
-        if self.llm_service.api_key and ("Gemini" in self.llm_service.provider or "OpenAI" in self.llm_service.provider):
+        # Mode-specific prompt specifications for external LLMs
+        MODE_PROMPTS = {
+            "Quick Summary": (
+                f"Generate an ultra-concise 'Quick Summary' (2-3 sentences max) for the document named '{doc_name}'. "
+                f"Explain what this document is about, its primary innovation or result, and why it matters. "
+                f"End with a single '> 💡 **Core Takeaway**:' callout. Keep total length under 120 words. Do NOT generate long bullet lists."
+            ),
+            "Bullet Points": (
+                f"Generate a structured 'Bullet Points' summary for the document named '{doc_name}'. "
+                f"Group strictly into categorized, skimmable bullet points:\n"
+                f"- **Core Scope & Objective** (2-3 crisp bullets)\n"
+                f"- **Technical Approach & Framework** (2-3 crisp bullets)\n"
+                f"- **Key Results & Metrics** (2-3 crisp bullets)\n"
+                f"- **Actionable Takeaways** (1-2 crisp bullets)\n"
+                f"Do NOT write narrative paragraphs. Keep each bullet point punchy and direct."
+            ),
+            "Key Findings": (
+                f"Generate a 'Key Findings' summary report for the document named '{doc_name}' focused strictly on empirical results, discoveries, and metrics.\n"
+                f"Format as:\n"
+                f"1. A numbered list of 4-6 primary empirical findings (each with a bold title, exact numbers/percentages, and citation).\n"
+                f"2. A '> 📊 **Quantitative Highlights**:' callout summarizing key percentages, speedups, or benchmark scores.\n"
+                f"Focus strictly on results and outcomes rather than general background."
+            ),
+            "Executive Summary": (
+                f"Generate a strategic 'Executive Summary' for '{doc_name}' tailored for executive leadership and C-suite decision-makers.\n"
+                f"Format with:\n"
+                f"#### 1. Strategic Context & Vision (concise context and core purpose)\n"
+                f"#### 2. Business & Operational Value (high-level impact, efficiency gains, strategic benefits)\n"
+                f"#### 3. Strategic Recommendations (3 actionable takeaways for implementation)\n"
+                f"Avoid low-level code; focus on high-level strategy, practical impact, and next steps."
+            ),
+            "Detailed Summary": (
+                f"Generate an exhaustive, in-depth 'Detailed Summary' for '{doc_name}'.\n"
+                f"Format with:\n"
+                f"#### 1. 📖 Background & Problem Statement\n"
+                f"#### 2. 🔍 System Architecture & Technical Methodology\n"
+                f"#### 3. 📊 Empirical Experiments, Benchmarks & Evidence\n"
+                f"#### 4. 💡 Limitations, Critical Analysis & Future Directions\n"
+                f"Provide thorough explanations, mechanisms, and concrete data points."
+            )
+        }
+
+        # Check if LLM provider has an API key configured
+        has_llm_key = bool(self.llm_service.api_key and any(p in self.llm_service.provider for p in ["Gemini", "OpenAI", "NVIDIA"]))
+
+        if has_llm_key:
             try:
-                truncated_text = text[:6000]
+                truncated_text = text[:6500]
+                mode_instruction = MODE_PROMPTS.get(mode, MODE_PROMPTS["Detailed Summary"])
                 prompt = (
-                    f"Please generate a structured '{mode}' for the document named '{doc_name}'.\n\n"
-                    f"DOCUMENT CONTENT:\n{truncated_text}\n\n"
-                    f"Format with clean markdown headings, bullet points, and key findings."
+                    f"{mode_instruction}\n\n"
+                    f"DOCUMENT CONTENT:\n{truncated_text}"
                 )
                 system_instruction = (
-                    f"You are an expert document intelligence summarizer. Generate a {mode} summarizing the content clearly."
+                    f"You are an expert document intelligence researcher. Your task is to generate a distinct '{mode}' summary. "
+                    f"Adhere strictly to the requested structure, tone, and length for this specific style mode."
                 )
-                llm_resp = self.llm_service.generate(prompt=prompt, system_instruction=system_instruction)
-                summary_text = llm_resp.get("text", "")
+                llm_resp = self.llm_service.generate(prompt=prompt, system_instruction=system_instruction, target_doc_name=doc_name)
                 is_demo = llm_resp.get("is_demo", False)
-                provider = llm_resp.get("provider", "LLM")
+                if is_demo:
+                    summary_text = self._generate_smart_local_summary(text, mode, doc_name)
+                    provider = "IntelliAssist Smart NLP Engine (Demo Mode)"
+                else:
+                    summary_text = llm_resp.get("text", "")
+                    provider = llm_resp.get("provider", "LLM")
+                    if not summary_text or len(summary_text) < 30:
+                        raise ValueError("LLM returned empty summary text.")
             except Exception as e:
                 logger.warning("LLM summarization failed (%s), using local fallback", e)
                 summary_text = self._generate_smart_local_summary(text, mode, doc_name)
@@ -290,7 +470,7 @@ class DocumentSummarizer:
         )
 
         # If LLM key is present, enhance synthesis
-        if self.llm_service.api_key and ("Gemini" in self.llm_service.provider or "OpenAI" in self.llm_service.provider):
+        if self.llm_service.api_key and any(p in self.llm_service.provider for p in ["Gemini", "OpenAI", "NVIDIA"]):
             try:
                 prompt = (
                     f"Perform a professional academic comparison between Document A ('{doc_a_name}') and Document B ('{doc_b_name}').\n\n"
