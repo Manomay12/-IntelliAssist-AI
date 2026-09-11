@@ -12,7 +12,9 @@ def render_sentiment_page(
     all_documents: List[str],
     on_analyze_document: Callable[[str], Dict[str, Any]],
     on_analyze_custom_text: Callable[[str], Dict[str, Any]],
-    default_doc: Optional[str] = None
+    default_doc: Optional[str] = None,
+    *args,
+    **kwargs
 ):
     """Render the Sentiment and Intent Analysis dashboard."""
     st.markdown("""

@@ -25,10 +25,12 @@ def render_chat_page(
     on_delete_session: Optional[Callable[[str], None]] = None,
     doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
     on_upload_files: Optional[Callable[[List[Any]], None]] = None,
-    question_generator: Optional[Any] = None
+    question_generator: Optional[Any] = None,
+    *args,
+    **kwargs
 ):
     """Render the AI Chat Page."""
-    registry = doc_registry or {}
+    registry = doc_registry or kwargs.get("doc_registry", {})
     total_docs = len(all_documents)
 
     # Top Header Banner

@@ -16,7 +16,9 @@ def render_analytics_page(
     total_questions: int,
     total_summaries: int,
     total_searches: int,
-    avg_latency: float
+    avg_latency: float,
+    *args,
+    **kwargs
 ):
     """Render the comprehensive system analytics dashboard."""
     st.markdown("""

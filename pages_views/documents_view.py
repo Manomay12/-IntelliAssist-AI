@@ -10,16 +10,25 @@ from components.document_card import render_document_card
 from utils.helpers import format_file_size, get_file_icon
 
 def render_documents_page(
-    doc_infos: List[Dict[str, Any]],
-    on_upload_files: Callable[[List[Any]], None],
-    on_load_samples: Callable[[], None],
-    on_open_doc: Callable[[str], None],
-    on_summarize_doc: Callable[[str], None],
-    on_chat_doc: Callable[[str], None],
-    on_delete_doc: Callable[[str], None],
-    selected_doc_preview: Optional[Dict[str, Any]] = None
+    doc_infos: Optional[List[Dict[str, Any]]] = None,
+    on_upload_files: Optional[Callable[[List[Any]], None]] = None,
+    on_load_samples: Optional[Callable[[], None]] = None,
+    on_open_doc: Optional[Callable[[str], None]] = None,
+    on_summarize_doc: Optional[Callable[[str], None]] = None,
+    on_chat_doc: Optional[Callable[[str], None]] = None,
+    on_delete_doc: Optional[Callable[[str], None]] = None,
+    selected_doc_preview: Optional[Dict[str, Any]] = None,
+    *args,
+    **kwargs
 ):
     """Render the Document Library and ingestion interface."""
+    doc_infos = doc_infos if doc_infos is not None else kwargs.get("doc_infos", [])
+    on_upload_files = on_upload_files or kwargs.get("on_upload_files", lambda f: None)
+    on_load_samples = on_load_samples or kwargs.get("on_load_samples", lambda: None)
+    on_open_doc = on_open_doc or kwargs.get("on_open_doc", lambda d: None)
+    on_summarize_doc = on_summarize_doc or kwargs.get("on_summarize_doc", lambda d: None)
+    on_chat_doc = on_chat_doc or kwargs.get("on_chat_doc", lambda d: None)
+    on_delete_doc = on_delete_doc or kwargs.get("on_delete_doc", lambda d: None)
     st.markdown("""
     <div style="margin-bottom:22px;">
         <h2 style="font-weight:800; color:#ffffff; margin:0 0 6px 0; letter-spacing:-0.03em; font-size:1.8rem;">

@@ -45,7 +45,9 @@ def render_summarizer_page(
     current_summary_data: Optional[Dict[str, Any]] = None,
     default_doc: Optional[str] = None,
     doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
-    summarizer_service: Optional[Any] = None
+    summarizer_service: Optional[Any] = None,
+    *args,
+    **kwargs
 ):
     """Render the Document Summarizer and Cross-Document Synthesis workspace."""
     st.markdown("""

@@ -29,26 +29,14 @@ st.set_page_config(
 
 # Custom Design System and Components
 import importlib
-import components.styles
-import components.sidebar
-import components.chat_ui
-import services.conversation_manager
-import services.rag_engine
-import services.llm_service
-import pages_views.chat_view
-import pages_views.history_view
 
-# Development hot-reload (disabled in production for high performance)
-if os.getenv("DEBUG_RELOAD") == "1":
-    import importlib
-    importlib.reload(components.styles)
-    importlib.reload(components.sidebar)
-    importlib.reload(components.chat_ui)
-    importlib.reload(services.conversation_manager)
-    importlib.reload(services.rag_engine)
-    importlib.reload(services.llm_service)
-    importlib.reload(pages_views.chat_view)
-    importlib.reload(pages_views.history_view)
+# Ensure any updated modules are dynamically reloaded across Streamlit Cloud reruns
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name.startswith(("pages_views.", "components.", "services.")):
+        try:
+            importlib.reload(sys.modules[_mod_name])
+        except Exception:
+            pass
 
 from components.styles import inject_custom_styles
 from components.sidebar import render_sidebar

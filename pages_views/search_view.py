@@ -13,7 +13,9 @@ def render_search_page(
     on_search: Callable[[str, int, float, str], List[Dict[str, Any]]],
     on_ask_about_result: Callable[[str], None],
     doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
-    question_generator: Optional[Any] = None
+    question_generator: Optional[Any] = None,
+    *args,
+    **kwargs
 ):
     """Render the Hybrid & Semantic Vector Search page."""
     st.markdown("""

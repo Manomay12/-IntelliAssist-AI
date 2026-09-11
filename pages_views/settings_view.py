@@ -22,7 +22,9 @@ def render_settings_page(
     on_save_settings: Callable[[Dict[str, Any]], None],
     on_clear_history: Callable[[], None],
     on_rebuild_index: Callable[[], None],
-    on_clear_all_data: Callable[[], None]
+    on_clear_all_data: Callable[[], None],
+    *args,
+    **kwargs
 ):
     """Render the Settings page."""
     st.markdown("""

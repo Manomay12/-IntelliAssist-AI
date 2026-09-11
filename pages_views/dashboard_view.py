@@ -10,21 +10,44 @@ from components.metrics import render_metric_grid
 from components.document_card import render_document_card
 
 def render_dashboard(
-    doc_infos: List[Dict[str, Any]],
-    total_chunks: int,
-    total_questions: int,
-    total_convs: int,
-    recent_activities: List[Dict[str, Any]],
-    on_quick_ask: Callable[[str], None],
-    on_navigate: Callable[[str], None],
-    on_open_doc: Callable[[str], None],
-    on_summarize_doc: Callable[[str], None],
-    on_chat_doc: Callable[[str], None],
-    on_delete_doc: Callable[[str], None],
-    on_load_samples: Callable[[], None],
-    on_upload_files: Optional[Callable[[List[Any]], None]] = None
+    doc_infos: Optional[List[Dict[str, Any]]] = None,
+    total_chunks: int = 0,
+    total_questions: int = 0,
+    total_convs: int = 0,
+    recent_activities: Optional[List[Dict[str, Any]]] = None,
+    on_quick_ask: Optional[Callable[[str], None]] = None,
+    on_navigate: Optional[Callable[[str], None]] = None,
+    on_open_doc: Optional[Callable[[str], None]] = None,
+    on_summarize_doc: Optional[Callable[[str], None]] = None,
+    on_chat_doc: Optional[Callable[[str], None]] = None,
+    on_delete_doc: Optional[Callable[[str], None]] = None,
+    on_load_samples: Optional[Callable[[], None]] = None,
+    on_upload_files: Optional[Callable[[List[Any]], None]] = None,
+    *args,
+    **kwargs
 ):
     """Render the modernized hero dashboard and document intelligence workspace."""
+    # Defensive fallbacks for kwargs or omitted parameters
+    if doc_infos is None:
+        doc_infos = kwargs.get("doc_infos") or []
+    if recent_activities is None:
+        recent_activities = kwargs.get("recent_activities") or []
+    if on_quick_ask is None:
+        on_quick_ask = kwargs.get("on_quick_ask") or (lambda q: None)
+    if on_navigate is None:
+        on_navigate = kwargs.get("on_navigate") or (lambda p: None)
+    if on_open_doc is None:
+        on_open_doc = kwargs.get("on_open_doc") or (lambda d: None)
+    if on_summarize_doc is None:
+        on_summarize_doc = kwargs.get("on_summarize_doc") or (lambda d: None)
+    if on_chat_doc is None:
+        on_chat_doc = kwargs.get("on_chat_doc") or (lambda d: None)
+    if on_delete_doc is None:
+        on_delete_doc = kwargs.get("on_delete_doc") or (lambda d: None)
+    if on_load_samples is None:
+        on_load_samples = kwargs.get("on_load_samples") or (lambda: None)
+    if on_upload_files is None:
+        on_upload_files = kwargs.get("on_upload_files")
     # 1. Hero Section
     st.markdown("""
     <div class="hero-container">

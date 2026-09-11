@@ -30,7 +30,9 @@ def render_sidebar(
     on_delete_session: Optional[Callable[[str], None]] = None,
     on_new_chat: Optional[Callable[[], None]] = None,
     on_clear_active_chat: Optional[Callable[[], None]] = None,
-    on_navigate: Optional[Callable[[str], None]] = None
+    on_navigate: Optional[Callable[[str], None]] = None,
+    *args,
+    **kwargs
 ) -> str:
     """Render the enhanced sidebar with modern navigation, quick actions, and recent chat history."""
     with st.sidebar:

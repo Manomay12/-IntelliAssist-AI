@@ -14,7 +14,9 @@ def render_history_page(
     on_rename_session: Callable[[str, str], None],
     on_delete_session: Callable[[str], None],
     on_delete_all_sessions: Callable[[], None],
-    on_new_chat: Callable[[], None]
+    on_new_chat: Callable[[], None],
+    *args,
+    **kwargs
 ):
     """Render the enhanced Conversation History manager with bulk delete options."""
     st.markdown("""
