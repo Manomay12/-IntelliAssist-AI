@@ -1,14 +1,14 @@
 """
 Analytics Dashboard Page View for IntelliAssist AI.
-Presents system metrics, token counts, format distributions, and AI usage statistics.
+Presents system metrics, token counts, format distributions, document category breakdowns, and AI usage statistics.
 """
 
 from typing import Dict, Any, List
-# pyrefly: ignore [missing-import]
 import streamlit as st
 from components.metrics import render_metric_card
 from components.charts import render_doc_distribution_chart
 import pandas as pd
+
 
 def render_analytics_page(
     doc_infos: List[Dict[str, Any]],
@@ -20,21 +20,22 @@ def render_analytics_page(
 ):
     """Render the comprehensive system analytics dashboard."""
     st.markdown("""
-    <div style="margin-bottom:20px;">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <h2 style="font-weight:800; color:#ffffff; margin:0; letter-spacing:-0.02em;">📊 Intelligence & System Analytics</h2>
-            <span style="font-size:0.75rem; background:rgba(99,102,241,0.15); color:#a5b4fc; padding:3px 10px; border-radius:9999px; border:1px solid rgba(99,102,241,0.3);">
-                Telemetry & Insights
-            </span>
+    <div style="margin-bottom:24px;">
+        <div style="display:inline-flex; align-items:center; gap:8px; padding:4px 12px; border-radius:9999px; background:rgba(6,182,212,0.1); border:1px solid rgba(6,182,212,0.25); margin-bottom:8px;">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#06b6d4; box-shadow:0 0 8px #06b6d4;"></span>
+            <span style="font-size:0.75rem; font-weight:700; color:#22d3ee; letter-spacing:0.04em; text-transform:uppercase;">System Telemetry</span>
         </div>
-        <p style="color:#94a3b8; font-size:0.92rem; margin:4px 0 0 0;">
-            Track document corpus growth, vector database density, query distributions, and processing latencies.
+        <h1 style="font-size:1.85rem; font-weight:800; color:#f8fafc; letter-spacing:-0.03em; margin:0 0 6px 0;">
+            Platform Telemetry & Vector Health
+        </h1>
+        <p style="color:#94a3b8; font-size:0.92rem; margin:0; max-width:760px; line-height:1.5;">
+            Real-time operational observability across vector index density, retrieval latencies, document corpus distributions, and RAG execution counts.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     # Document & Vector Metrics Row
-    st.markdown("<h4 style='color:#f8fafc; font-size:1.05rem; font-weight:700; margin:0 0 12px 0;'>📚 Corpus & Vector Database Status</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='color:#f8fafc; font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px;'>Vector Space & Corpus Density</div>", unsafe_allow_html=True)
     
     total_pages = sum(d.get("total_pages", 1) for d in doc_infos)
     total_chars = sum(d.get("total_chars", 0) for d in doc_infos)
@@ -42,36 +43,37 @@ def render_analytics_page(
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        render_metric_card("Total Documents", len(doc_infos), "📄", "Active", "Processed Files")
+        render_metric_card("Total Documents", len(doc_infos), "Active Files", "Library", "Managed Files")
     with col2:
-        render_metric_card("Total Pages", total_pages, "📑", "Normalized", "Extracted Pages")
+        render_metric_card("Total Pages", total_pages, "Normalized", "Pages", "Extracted Pages")
     with col3:
-        render_metric_card("Total Chunks", total_chunks, "🧩", "Stored", "500-char Chunks")
+        render_metric_card("Indexed Chunks", total_chunks, "Stored", "Chunks", "Chunk Store")
     with col4:
-        render_metric_card("Indexed Vectors", total_chunks, "⚡", "384-dim", "Cosine Embeddings")
+        render_metric_card("Dense Vectors", total_chunks, "384-dim", "Embeddings", "Cosine Index")
 
-    st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin:20px 0;'></div>", unsafe_allow_html=True)
 
     # AI Usage Metrics Row
-    st.markdown("<h4 style='color:#f8fafc; font-size:1.05rem; font-weight:700; margin:0 0 12px 0;'>🤖 AI & Pipeline Performance</h4>", unsafe_allow_html=True)
+    st.markdown("<div style='color:#f8fafc; font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px;'>RAG Pipeline Execution Telemetry</div>", unsafe_allow_html=True)
     
     u_col1, u_col2, u_col3, u_col4 = st.columns(4)
     with u_col1:
-        render_metric_card("Questions Asked", total_questions, "💬", "+ RAG", "Conversational Q&A")
+        render_metric_card("Questions Evaluated", total_questions, "Grounded", "Queries", "Conversational RAG")
     with u_col2:
-        render_metric_card("Summaries Built", total_summaries, "📝", "Multi-Mode", "Executive Briefs")
+        render_metric_card("Syntheses Built", total_summaries, "Multi-Tier", "Reports", "Executive Briefs")
     with u_col3:
-        render_metric_card("Semantic Searches", total_searches, "🔎", "Dense Match", "Concept Lookups")
+        render_metric_card("Hybrid Searches", total_searches, "Dual-Engine", "Searches", "RRF Retrievals")
     with u_col4:
-        render_metric_card("Average Latency", f"{avg_latency:.2f}s", "⏱️", "Sub-second", "Inference & Search")
+        render_metric_card("Avg Latency", f"{avg_latency:.2f}s", "Fast", "Duration", "RAG Pipeline Latency")
 
-    st.markdown("<div style='margin:28px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
 
     # Charts and Table Row
     c_pie, c_table = st.columns([1.8, 2.2])
 
     with c_pie:
         st.markdown("<div class='modern-card'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.85rem; font-weight:700; color:#f8fafc; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.04em;'>Document Formats</div>", unsafe_allow_html=True)
         # Compute doc extension counts
         doc_type_counts = {}
         for d in doc_infos:
@@ -87,14 +89,15 @@ def render_analytics_page(
     with c_table:
         st.markdown("""
         <div class="modern-card">
-            <h4 style="margin:0 0 12px 0; font-size:1rem; font-weight:700; color:#f8fafc;">📑 Document Breakdown</h4>
+            <div style="font-size:0.85rem; font-weight:700; color:#f8fafc; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.04em;">Document Inventory & Categories</div>
         """, unsafe_allow_html=True)
         
         if doc_infos:
             table_data = []
             for d in doc_infos:
                 table_data.append({
-                    "Filename": d.get("filename", "Doc"),
+                    "Document": d.get("filename", "Doc"),
+                    "Category": d.get("category", "General Document"),
                     "Type": d.get("file_ext", "").upper(),
                     "Pages": d.get("total_pages", 1),
                     "Chunks": d.get("chunk_count", 0),
@@ -103,6 +106,6 @@ def render_analytics_page(
             df = pd.DataFrame(table_data)
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("No documents uploaded yet. Upload documents to see the breakdown table.")
+            st.info("No documents uploaded yet. Upload documents to inspect corpus breakdown.")
             
         st.markdown("</div>", unsafe_allow_html=True)

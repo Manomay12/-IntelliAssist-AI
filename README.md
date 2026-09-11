@@ -4,13 +4,14 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.38+-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
-[![RAG Embeddings](https://img.shields.io/badge/Embeddings-all--MiniLM--L6--v2-792EE5?style=for-the-badge&logo=huggingface&logoColor=white)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
-[![PyTest](https://img.shields.io/badge/Tests-32%20Passed%20(100%25)-success?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org)
+[![Hybrid Retrieval](https://img.shields.io/badge/Retrieval-Dense%20+%20BM25%20(RRF)-06b6d4?style=for-the-badge)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+[![Neural Reranker](https://img.shields.io/badge/Reranker-Cross--Encoder-8b5cf6?style=for-the-badge)](https://huggingface.co/cross-encoder/ms-marco-MiniLM-L-6-v2)
+[![PyTest](https://img.shields.io/badge/Tests-48%20Passed%20(100%25)-success?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org)
 [![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docker.com)
 [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](LICENSE)
 
 **A production-style, enterprise-grade AI Document Intelligence and Conversational Retrieval-Augmented Generation (RAG) platform.**  
-*Built with Python, Streamlit, Sentence-Transformers neural embeddings, persistent Cosine Vector Indexing, cross-document comparison, and multi-provider Generative AI.*
+*Built with Python, Streamlit, Hybrid Vector & BM25 Retrieval, Cross-Encoder Neural Reranking, Multi-Perspective Document Synthesis, and Multi-Provider Generative AI.*
 
 </div>
 
@@ -18,14 +19,17 @@
 
 ## 📌 1. Project Overview & Problem Statement
 
-Students, researchers, and enterprise analysts face severe information overload when trying to extract insights and synthesize knowledge from dense academic papers, multi-page technical reports, and notes. Traditional keyword search (`Ctrl+F`) fails to capture semantic nuance, conceptual synonyms, and contextual relationships.
+Students, researchers, and enterprise analysts face severe information overload when trying to extract insights and synthesize knowledge from dense academic papers, multi-page technical reports, and notes. Traditional keyword search (`Ctrl+F`) fails to capture semantic nuance, while pure dense vector search can miss precise acronyms and numerical codes.
 
-**IntelliAssist AI** solves this challenge with an end-to-end conversational AI document intelligence system:
-- **Factually Grounded RAG Chat**: Natural language Q&A with strict document scoping, verified page citations, and low-confidence hallucination protection.
-- **Dense Neural Semantic Embeddings**: 384-dimensional vector representations powered by `sentence-transformers/all-MiniLM-L6-v2` with Gemini/OpenAI cloud fallbacks.
-- **Cross-Document Comparison**: Automated side-by-side comparative matrices contrasting methodologies, benchmark findings, and technical tradeoffs between documents.
-- **Production Resilience**: SHA-256 duplicate detection, corrupt file safeguards, and scanned-PDF detection.
-- **Multi-Mode Summarization & NLP**: 5 summary modes, entity discovery, sentiment polarity donut charts, and chunk trajectory trends.
+**IntelliAssist AI** solves this challenge with an end-to-end, dark-mode conversational document intelligence workspace:
+- **Hybrid Retrieval (Dense + BM25)**: Synthesizes 384-dimensional dense vectors (`all-MiniLM-L6-v2`) with BM25 Okapi lexical term scoring via Reciprocal Rank Fusion ($k=60$).
+- **Neural Cross-Encoder Reranking**: Re-scores candidate passages using `cross-encoder/ms-marco-MiniLM-L-6-v2` with calibrated sigmoid scores.
+- **Semantic Query Intent Classification**: Embeds user inquiries against 8 intent prototypes (`QUESTION_ANSWERING`, `SUMMARIZATION`, `COMPARISON`, `EXTRACTION`, `SEARCH`, `STUDY`, `ANALYSIS`, `ACTION_ITEMS`).
+- **Semantic Document Classification**: Automatically categorizes files into 7 genres (`Research Paper`, `Annual Report`, `Academic Material`, `Policy Document`, `Business Report`, `Technical Document`, `General Document`).
+- **Multi-Perspective Synthesis Modes**: Single-document synthesis, Student Mode (Study Guides, Quizzes, Flashcards), Research Mode (Methodology, Limitations), Professional Mode (Decisions, Risks, Action Items), and Smart Insights.
+- **Factually Grounded RAG Chat**: Natural language Q&A with strict document scoping, verified page citations, match type tags (`Semantic Match`, `Keyword Match`, `Hybrid Match`), and anti-hallucination protection.
+- **Scanned-PDF Detection & OCR Fallback**: Detects image-only documents and provides diagnostics and modular OCR fallback.
+- **Single-Pass Batch Ingestion**: Eliminates I/O bottlenecks with in-memory batch indexing and SHA-256 deduplication.
 
 ---
 
@@ -38,23 +42,23 @@ Students, researchers, and enterprise analysts face severe information overload 
 ### 🔄 End-to-End Pipeline Diagram
 
 ```
-┌─────────────────┐      ┌─────────────────────────┐      ┌──────────────────────┐
-│  User Uploads   │ ───► │ 1. Ingestion & Security │ ───► │ 2. Text Normalizer  │
-│ (PDF/DOCX/TXT)  │      │    (SHA-256 & Corrupt)  │      │    & Page Tracking   │
-└─────────────────┘      └─────────────────────────┘      └──────────────────────┘
-                                                                     │
-                                                                     ▼
-┌─────────────────┐      ┌─────────────────────────┐      ┌──────────────────────┐
-│ 5. Vector Store │ ◄─── │ 4. Embeddings Engine    │ ◄─── │ 3. Recursive Chunker │
-│  (Cosine Index) │      │  (all-MiniLM-L6-v2)     │      │ (500 chars / 100 ov) │
-└─────────────────┘      └─────────────────────────┘      └──────────────────────┘
+┌──────────────────┐      ┌──────────────────────────┐      ┌──────────────────────┐
+│   User Uploads   │ ───► │ 1. Ingestion & Security  │ ───► │ 2. Text Normalizer   │
+│  (PDF/DOCX/TXT)  │      │    (SHA-256 & Corrupt)   │      │    & Page Tracking   │
+└──────────────────┘      └──────────────────────────┘      └──────────────────────┘
+                                                                       │
+                                                                       ▼
+┌──────────────────┐      ┌──────────────────────────┐      ┌──────────────────────┐
+│ 5. Hybrid Store  │ ◄─── │ 4. Dual Embeddings       │ ◄─── │ 3. Recursive Chunker │
+│  (Cosine + BM25) │      │  (all-MiniLM-L6-v2)      │      │ (500 chars / 100 ov) │
+└──────────────────┘      └──────────────────────────┘      └──────────────────────┘
        │
-       │  Semantic Query Embedding & Retrieval
+       │  Query Intent Classification & Dual Retrieval (RRF)
        ▼
-┌─────────────────┐      ┌─────────────────────────┐      ┌──────────────────────┐
-│ 6. Top-K Ranker │ ───► │ 7. Multi-Provider LLM   │ ───► │ Verified Answer with │
-│ (Relevance Cal) │      │ (Gemini / OpenAI / Demo)│      │ Exact Source Citation│
-└─────────────────┘      └─────────────────────────┘      └──────────────────────┘
+┌──────────────────┐      ┌──────────────────────────┐      ┌──────────────────────┐
+│ 6. Cross-Encoder │ ───► │ 7. Multi-Provider LLM    │ ───► │ Verified Answer with │
+│ Neural Reranker  │      │ (Gemini / OpenAI / Local)│      │ Grounded Citations   │
+└──────────────────┘      └──────────────────────────┘      └──────────────────────┘
 ```
 
 ---
@@ -63,21 +67,21 @@ Students, researchers, and enterprise analysts face severe information overload 
 
 <div align="center">
 
-### 🏠 Modern AI SaaS Dashboard
-*Interactive metrics, recent uploads, Quick Ask AI, and telemetry logs.*
+### 🏠 Dark AI SaaS Workspace
+*Atmospheric grid background, radial cyan/violet glow, telemetry metrics, upload dropzone, and activity feed.*
 
 ```
 +-----------------------------------------------------------------------------------+
-|  ⚡ IntelliAssist AI                         [📕 3 Files] [🧩 394 Chunks] [🟢 Ready]|
+|  IntelliAssist AI                            [3 Files] [394 Chunks] [Ready]       |
 +-----------------------------------------------------------------------------------+
-|  [ 📄 3 Total Files ]   [ 🧩 394 Vectors ]   [ 💬 14 Inquiries ]   [ ⚡ 18ms Latency ] |
+|  [ 3 Active Files ]   [ 394 Vectors ]   [ 14 Queries ]   [ 0.28s Avg Latency ]    |
 |                                                                                   |
-|  🎯 Quick Ask AI: [ "Explain how attention works in transformers"         [Ask AI] ]|
+|  Quick Ask AI: [ "Explain how multi-head attention operates"             [Ask AI] ]|
 |                                                                                   |
-|  📚 Indexed Documents                 |  📈 System Activity Telemetry              |
-|  • AI_Research_Transformers.pdf       |  • [14:32:10] RAG Answer: 6 sources cited  |
-|  • Project_Report_IntelliAssist.docx  |  • [14:30:15] Indexed 394 chunks into DB   |
-|  • Healthcare_ML_Overview.txt         |  • [14:28:02] SentenceTransformer loaded   |
+|  Managed Documents                    |  Platform Telemetry                       |
+|  • AI_Research_Transformers.pdf       |  • [14:32:10] Q&A: 6 passages cited       |
+|  • Project_Report_IntelliAssist.docx  |  • [14:30:15] Indexed 394 chunks into DB  |
+|  • Healthcare_ML_Overview.txt         |  • [14:28:02] CrossEncoder initialized    |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -86,16 +90,16 @@ Students, researchers, and enterprise analysts face severe information overload 
 
 ```
 +-----------------------------------------------------------------------------------+
-| 👤 You: Explain how the multi-head attention mechanism operates.                   |
+| You: Explain how the multi-head attention mechanism operates.                     |
 +-----------------------------------------------------------------------------------+
-| 🤖 IntelliAssist AI:                                                              |
-| 1. 🎯 Executive Summary: Multi-head attention allows the model to jointly attend  |
+| IntelliAssist AI:                                                                 |
+| 1. Executive Summary: Multi-head attention allows the model to jointly attend     |
 |    to information from different representation subspaces at different positions. |
-| 2. 🔍 In-Depth Breakdown: Queries, Keys, and Values are linearly projected h times|
+| 2. In-Depth Breakdown: Queries, Keys, and Values are linearly projected h times   |
 |    with dimension d_k = d_model / h.                                              |
 |                                                                                   |
-| 📚 Sources & Citations (3 references cited):                                      |
-| 📕 AI_Research_Paper.pdf (Page 2) — [🟢 94% Relevance (Strong match)]             |
+| Sources & Evidence (3 references cited):                                          |
+| AI_Research_Paper.pdf (Page 2) — [94% Relevance • Hybrid Match]                   |
 |    "Multi-head attention projects queries, keys and values h times with..."       |
 +-----------------------------------------------------------------------------------+
 ```
@@ -103,10 +107,10 @@ Students, researchers, and enterprise analysts face severe information overload 
 ### ⚖️ Cross-Document Comparison Matrix
 *Automated side-by-side comparative analysis of two selected documents.*
 
-| Comparative Dimension | 📄 AI_Research_Paper.pdf | 📄 Project_Report.docx |
+| Comparative Dimension | AI_Research_Paper.pdf | Project_Report.docx |
 | :--- | :--- | :--- |
 | **Primary Domain** | Transformer Architectures & RAG | Enterprise AI Document Intelligence |
-| **Core Method** | Scaled Dot-Product & Self-Attention | Modular Ingestion, Embeddings & Vector DB |
+| **Core Method** | Scaled Dot-Product & Self-Attention | Hybrid BM25 + Dense Vectors & Reranking |
 | **Key Benchmark** | 28.4 BLEU (EN-DE), 41.8 BLEU (EN-FR) | 94.6% F1 Faithfulness, 18ms Retrieval |
 | **Technologies** | PyTorch, Transformers, GPUs | Python, Streamlit, all-MiniLM-L6-v2 |
 
@@ -116,13 +120,15 @@ Students, researchers, and enterprise analysts face severe information overload 
 
 ## 🧠 4. Technical Highlights
 
-- **Semantic Vector Embeddings**: 384-dimensional dense neural embeddings powered by `sentence-transformers/all-MiniLM-L6-v2` with support for Google Gemini `text-embedding-004` and OpenAI `text-embedding-3-small`.
-- **Calibrated Retrieval Relevance**: Transparent relevance scoring (🟢 Strong >75%, 🟡 Moderate 55–75%, 🔴 Weak <55%) clearly distinguishing vector cosine similarity from LLM reasoning confidence.
-- **Hallucination Protection**: Out-of-domain queries trigger an honest *"Insufficient Document Evidence"* notice rather than generating ungrounded facts.
+- **Dual-Channel Hybrid Retrieval**: Pure NumPy BM25Okapi ($k_1=1.5, b=0.75$) combined with dense 384-dimensional cosine vectors via Reciprocal Rank Fusion ($k=60$).
+- **Neural Cross-Encoder Reranking**: Secondary re-ranking pass using `cross-encoder/ms-marco-MiniLM-L-6-v2` with sigmoid normalization for superior precision.
+- **Query Intent Classifier**: Zero-shot semantic query classification across 8 intent prototypes with calibrated softmax confidence.
+- **Document Genre Classification**: Semantic categorization of ingested documents across 7 standard genres.
+- **Calibrated Retrieval Relevance**: Honest relevance scoring (🟢 Strong >75%, 🟡 Moderate 55–75%, 🔴 Weak <55%) clearly distinguishing vector cosine similarity from LLM reasoning confidence.
+- **Anti-Hallucination Guard**: Out-of-domain queries trigger an honest *"Insufficient Document Evidence"* notice rather than generating ungrounded facts.
 - **SHA-256 Duplicate Protection**: Computes unique file hashes upon upload to prevent redundant chunk re-indexing.
-- **Corrupt & Scanned File Resilience**: Gracefully detects 0-byte files, password-protected PDFs, and image-only scanned PDFs with actionable diagnostics.
-- **Multi-Document & Target Scoping**: Query across all uploaded documents simultaneously or target a specific file with strict context boundaries.
-- **Cross-Document Comparison Engine**: Automatic side-by-side extraction of domains, objectives, methodologies, and metrics.
+- **Corrupt & Scanned File Resilience**: Gracefully detects 0-byte files, password-protected PDFs, and image-only scanned PDFs with actionable diagnostics and OCR fallback.
+- **Specialized Workspaces**: Student Mode, Research Mode, Professional Mode, and Smart Document Insights.
 - **Conversation Persistence**: Save, load, rename, clear, and export conversations to formatted Markdown transcripts.
 
 ---
@@ -131,13 +137,13 @@ Students, researchers, and enterprise analysts face severe information overload 
 
 | Layer | Technology | Details |
 | :--- | :--- | :--- |
-| **Frontend / UI** | Streamlit (Python) | Custom CSS Design System, Glassmorphism, Dark Mode, Telemetry |
-| **Embeddings** | `sentence-transformers` | `all-MiniLM-L6-v2` (384-dim dense vectors), Gemini & OpenAI APIs |
-| **Vector Store** | In-Memory Cosine DB | High-speed NumPy dot-product vector matrix with JSON disk persistence |
-| **Document Ingestion**| `pypdf`, `python-docx` | Multi-strategy extraction, SHA-256 hashing, layout cleaning |
-| **RAG & Synthesis** | Multi-Provider LLMs | Google Gemini 2.0 / 1.5, OpenAI GPT-4o, and Smart Local NLP Engine |
+| **Frontend / UI** | Streamlit (Python) | Custom CSS Design System, Glassmorphism, Dark Mode (`#07090e`), Telemetry |
+| **Hybrid Retrieval** | NumPy BM25Okapi + Dense | Reciprocal Rank Fusion ($k=60$), dense embeddings (`all-MiniLM-L6-v2`) |
+| **Neural Reranking**| `sentence-transformers` | `cross-encoder/ms-marco-MiniLM-L-6-v2` with sigmoid calibration |
+| **Document Ingestion**| `pypdf`, `python-docx` | Multi-strategy extraction, SHA-256 hashing, scanned-PDF OCR detection |
+| **RAG & Synthesis** | Multi-Provider LLMs | Google Gemini 2.0 / 1.5, OpenAI GPT-4o, NVIDIA NIM, and Smart Local NLP Engine |
 | **Analytics & Viz** | `plotly`, `pandas` | Interactive sentiment donuts, intent bar charts, chunk trend lines |
-| **Unit Testing** | `pytest` | 32 automated unit tests across all modular services |
+| **Unit Testing** | `pytest` | 48 automated unit tests across all modular services (100% pass) |
 | **Containerization**| Docker & Docker Compose | Python 3.11-slim container with healthcheck |
 
 ---
@@ -183,20 +189,9 @@ Open **`http://localhost:8501`** in your browser.
 
 ---
 
-### Method 2: Docker Deployment
-
-Run IntelliAssist AI with a single command:
-
-```bash
-docker compose up --build
-```
-Access the application at **`http://localhost:8501`**.
-
----
-
 ## 🧪 7. Running Automated Tests
 
-IntelliAssist AI includes a comprehensive `pytest` test suite with 32 unit tests:
+IntelliAssist AI includes a comprehensive `pytest` test suite with 48 unit tests:
 
 ```bash
 # Run full test suite with verbose output
@@ -207,13 +202,18 @@ pytest -v tests/
 ```
 tests/
 ├── conftest.py                       # Fixtures for vector store, sample docs, and engines
-├── test_document_processor.py        # PDF, DOCX, TXT parsing, SHA-256 hash, corrupt files
 ├── test_chunker.py                   # Recursive text splitting, boundaries & metadata
+├── test_doc_classifier.py            # Semantic document genre classification
+├── test_document_processor.py        # PDF, DOCX, TXT parsing, SHA-256 hash, corrupt files
 ├── test_embeddings.py                # 384-dim shape, L2 normalization & model reporting
-├── test_vector_store.py              # Cosine retrieval, deletion, duplicate detection & persistence
+├── test_hybrid_retriever.py          # BM25Okapi indexing, tokenization, RRF hybrid fusion
+├── test_ocr_service.py               # Scanned PDF detection and OCR fallback handling
+├── test_query_classifier.py          # 8-class query intent classification & calibration
+├── test_question_generator.py        # Dynamic exploratory question generation
 ├── test_rag.py                       # Typo normalization, strict scoping & hallucination guard
+├── test_reranker.py                  # Cross-encoder neural reranking & score sorting
 ├── test_sentiment.py                 # Sentiment polarity, multi-class intent & chunk trends
-└── test_summarizer_and_compare.py    # 5 summary modes, entity discovery & cross-doc comparison
+├── test_summarizer_and_compare.py    # Multi-mode synthesis, entity discovery & cross-doc comparison
 ```
 
 ---
@@ -233,44 +233,55 @@ intelliassist_ai/
 ├── assets/                     # Architecture diagrams and preview assets
 │   └── architecture_diagram.svg
 │
-├── tests/                      # Professional pytest unit test suite (32 tests)
+├── tests/                      # Pytest unit test suite (48 tests passing)
 │   ├── conftest.py
-│   ├── test_document_processor.py
 │   ├── test_chunker.py
+│   ├── test_doc_classifier.py
+│   ├── test_document_processor.py
 │   ├── test_embeddings.py
-│   ├── test_vector_store.py
+│   ├── test_hybrid_retriever.py
+│   ├── test_ocr_service.py
+│   ├── test_query_classifier.py
+│   ├── test_question_generator.py
 │   ├── test_rag.py
+│   ├── test_reranker.py
 │   ├── test_sentiment.py
-│   └── test_summarizer_and_compare.py
+│   ├── test_summarizer_and_compare.py
+│   └── test_vector_store.py
 │
 ├── pages_views/                # Modular Page Views
-│   ├── dashboard_view.py       # 🏠 Dashboard
-│   ├── documents_view.py       # 📄 Document Upload & Library
-│   ├── chat_view.py            # 💬 AI Chat & RAG
-│   ├── search_view.py          # 🔎 Semantic Search
-│   ├── summarizer_view.py      # 📝 Multi-Mode Summarizer & Compare
-│   ├── sentiment_view.py       # 🧠 Sentiment & Intent Intelligence
-│   ├── analytics_view.py       # 📊 System Telemetry
-│   ├── history_view.py         # 🕘 Conversation History
-│   └── settings_view.py        # ⚙️ Settings & LLM Config
+│   ├── dashboard_view.py       # Hero Dashboard & Ingestion Hub
+│   ├── documents_view.py       # Document Library & Indexing
+│   ├── chat_view.py            # Grounded RAG Chat
+│   ├── search_view.py          # Hybrid & Semantic Search
+│   ├── summarizer_view.py      # Multi-Mode & Specialized Synthesis
+│   ├── sentiment_view.py       # Tone & Intent Analytics
+│   ├── analytics_view.py       # System Telemetry & Vector Health
+│   ├── history_view.py         # Session Archives & History
+│   └── settings_view.py        # Settings & Model Parameters
 │
 ├── components/                 # Reusable UI Components
-│   ├── styles.py               # Custom CSS Design System
+│   ├── styles.py               # Dark AI SaaS CSS Design System
 │   ├── sidebar.py              # Navigation bar & system status
-│   ├── chat_ui.py              # Chat bubbles, prompt chips, feedback
-│   ├── document_card.py        # Document library cards
-│   ├── source_card.py          # Calibrated source citation references
-│   ├── metrics.py              # Stats counter tiles
+│   ├── chat_ui.py              # Chat bubbles, prompt chips, grounded citations
+│   ├── document_card.py        # Document cards with category tags
+│   ├── source_card.py          # Grounded source references with match badges
+│   ├── metrics.py              # Telemetry counter tiles
 │   └── charts.py               # Plotly telemetry visualizations
 │
-├── services/                   # Core Backend & AI Services
+├── services/                   # Core Backend & ML Services
+│   ├── hybrid_retriever.py     # Pure NumPy BM25Okapi & Reciprocal Rank Fusion
+│   ├── reranker.py             # Cross-Encoder Neural Reranking (ms-marco-MiniLM-L-6-v2)
+│   ├── query_classifier.py     # 8-class Query Intent Classifier with calibrated softmax
+│   ├── doc_classifier.py       # 7-class Semantic Document Genre Classifier
+│   ├── ocr_service.py          # Scanned-PDF Detection & Modular OCR Fallback
 │   ├── document_processor.py   # Text extraction, SHA-256 hash & error handling
 │   ├── chunker.py              # Recursive overlapping text chunking
 │   ├── embeddings.py           # Neural embeddings (all-MiniLM-L6-v2) & fallbacks
 │   ├── vector_store.py         # Cosine vector database & duplicate check
 │   ├── rag_engine.py           # RAG retrieval, context ranking & hallucination guard
-│   ├── llm_service.py          # Multi-provider LLM interface (Gemini/OpenAI/Demo)
-│   ├── summarizer.py           # Summarizer & Cross-Document Comparison engine
+│   ├── llm_service.py          # Multi-provider LLM interface (Gemini/OpenAI/NVIDIA/Local)
+│   ├── summarizer.py           # Summarizer, Student, Research, & Pro Mode Engine
 │   ├── sentiment_analyzer.py   # Sentiment polarity & multi-class intent classifier
 │   └── conversation_manager.py # Chat session persistence & Markdown exporter
 │

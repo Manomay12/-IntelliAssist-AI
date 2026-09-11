@@ -47,3 +47,9 @@ data/conversations/*
 
 # Streamlit Secrets (keep config.toml tracked)
 .streamlit/secrets.toml
+
+# Media and reference video recordings
+*.mkv
+*.mp4
+*.webm
+*.avi

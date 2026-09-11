@@ -1,14 +1,13 @@
 """
 Dashboard Page View for IntelliAssist AI.
-Displays key metrics, Quick Ask AI card, Recent Documents with actions, and AI activity feed.
+Redesigned with the hero section, drag-and-drop ingestion hub,
+intelligence pipeline visualizer, recently opened documents, and telemetry activity feed.
 """
 
-from typing import Dict, Any, List, Callable
-# pyrefly: ignore [missing-import]
+from typing import Dict, Any, List, Callable, Optional
 import streamlit as st
 from components.metrics import render_metric_grid
 from components.document_card import render_document_card
-from utils.helpers import get_file_icon
 
 def render_dashboard(
     doc_infos: List[Dict[str, Any]],
@@ -22,44 +21,122 @@ def render_dashboard(
     on_summarize_doc: Callable[[str], None],
     on_chat_doc: Callable[[str], None],
     on_delete_doc: Callable[[str], None],
-    on_load_samples: Callable[[], None]
+    on_load_samples: Callable[[], None],
+    on_upload_files: Optional[Callable[[List[Any]], None]] = None
 ):
-    """Render the main dashboard."""
-    # Top Hero Banner
+    """Render the modernized hero dashboard and document intelligence workspace."""
+    # 1. Hero Section
     st.markdown("""
-    <div class="hero-banner">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <h1 style="margin:0 0 8px 0; font-size:1.85rem; font-weight:800; color:#ffffff; letter-spacing:-0.02em;">
-                    Good day! 👋 <span style="background:linear-gradient(135deg, #a5b4fc 0%, #818cf8 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Welcome to IntelliAssist AI</span>
-                </h1>
-                <p style="margin:0; color:#94a3b8; font-size:0.95rem; max-width:680px;">
-                    Upload documents, extract deep insights with RAG, perform semantic search, and synthesize multi-page summaries with exact citations.
-                </p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 4 Key Metrics Grid
-    render_metric_grid(len(doc_infos), total_chunks, total_questions, total_convs)
-
-    st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
-
-    # Quick Ask AI Widget
-    st.markdown("""
-    <div class="modern-card" style="background:linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%); border-color:rgba(99, 102, 241, 0.3);">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-            <span style="font-size:1.3rem;">⚡</span>
-            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">Quick Ask AI Across All Documents</h3>
-        </div>
-        <p style="color:#94a3b8; font-size:0.85rem; margin-bottom:16px;">
-            Type any question to retrieve context-aware answers with source citations using our RAG pipeline.
+    <div class="hero-container">
+        <div class="hero-badge">Next-Generation Document Intelligence</div>
+        <h1 class="hero-title">
+            Your Documents. <span class="hero-gradient-text">Understood.</span>
+        </h1>
+        <p class="hero-subtitle">
+            Read. Search. Learn. Analyze. Upload complex PDFs, reports, and academic research papers. 
+            Extract multi-page insights, run hybrid semantic search, and verify evidence with exact citations.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    col_input, col_btn = st.columns([5, 1.2])
+    # 2. Hero Central Upload Drop-Zone Hub
+    col_l, col_center, col_r = st.columns([1, 8, 1])
+    with col_center:
+        st.markdown("""
+        <div class="upload-dropzone">
+            <div style="font-size:2rem; color:#38bdf8; margin-bottom:8px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+            </div>
+            <div style="font-weight:700; font-size:1.15rem; color:#ffffff; margin-bottom:4px;">
+                Drop your document here or browse files
+            </div>
+            <div style="font-size:0.84rem; color:#94a3b8; margin-bottom:14px;">
+                Supported: PDF • DOCX • TXT • MD
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        dash_upload = st.file_uploader(
+            "Upload files",
+            type=["pdf", "docx", "doc", "txt", "md"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+            key="dash_hero_uploader"
+        )
+        if dash_upload and on_upload_files:
+            if st.button(f"Process & Index {len(dash_upload)} Document(s)", key="dash_hero_index_btn", type="primary", use_container_width=True):
+                on_upload_files(dash_upload)
+
+    st.markdown("<div style='margin:28px 0;'></div>", unsafe_allow_html=True)
+
+    # 3. Telemetry Metrics Grid
+    render_metric_grid(len(doc_infos), total_chunks, total_questions, total_convs)
+
+    st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
+
+    # 4. Intelligence Pipeline Visualizer
+    st.markdown("""
+    <div style="margin-bottom:8px; font-size:0.82rem; font-weight:700; color:#38bdf8; letter-spacing:0.06em; text-transform:uppercase;">
+        INTELLIGENCE PIPELINE
+    </div>
+    <div class="pipeline-container">
+        <div class="pipeline-step">
+            <div class="pipeline-step-node">01</div>
+            <div class="pipeline-step-title">Upload</div>
+            <div class="pipeline-step-desc">PDF • DOCX • TXT</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step">
+            <div class="pipeline-step-node">02</div>
+            <div class="pipeline-step-title">Extract</div>
+            <div class="pipeline-step-desc">Structure & OCR</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step">
+            <div class="pipeline-step-node">03</div>
+            <div class="pipeline-step-title">Understand</div>
+            <div class="pipeline-step-desc">Intent & Semantics</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step">
+            <div class="pipeline-step-node">04</div>
+            <div class="pipeline-step-title">Semantic Index</div>
+            <div class="pipeline-step-desc">384-d Dense + BM25</div>
+        </div>
+        <div class="pipeline-connector"></div>
+        <div class="pipeline-step">
+            <div class="pipeline-step-node">05</div>
+            <div class="pipeline-step-title">Ask AI</div>
+            <div class="pipeline-step-desc">Grounded RAG</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
+
+    # 5. Quick Ask AI Widget
+    st.markdown("""
+    <div class="modern-card" style="border-color:rgba(56, 189, 248, 0.3);">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <div style="background:rgba(6,182,212,0.12); padding:6px; border-radius:8px; border:1px solid rgba(6,182,212,0.25);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+            </div>
+            <h3 style="margin:0; font-size:1.1rem; font-weight:700; color:#f8fafc;">Search & Query Across All Documents</h3>
+        </div>
+        <p style="color:#94a3b8; font-size:0.86rem; margin-bottom:14px;">
+            Ask questions to retrieve hybrid semantic context with verified source citations and confidence scores.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_input, col_btn = st.columns([5.2, 1.2])
     with col_input:
         quick_query = st.text_input(
             "Quick question input",
@@ -68,39 +145,38 @@ def render_dashboard(
             key="dash_quick_ask_input"
         )
     with col_btn:
-        if st.button("🚀 Ask AI", key="dash_quick_ask_btn", use_container_width=True):
+        if st.button("Ask AI", key="dash_quick_ask_btn", type="primary", use_container_width=True):
             if quick_query.strip():
                 on_quick_ask(quick_query)
 
-    st.markdown("<div style='margin:30px 0;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin:28px 0;'></div>", unsafe_allow_html=True)
 
-    # Two Column Layout: Recent Documents & Recent Activity
+    # 6. Two Column Layout: Recent Documents & Recent Activity
     col_docs, col_act = st.columns([1.1, 1])
 
     with col_docs:
         st.markdown("""
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">📄 Recent Documents</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">Recently Opened Documents</h3>
         </div>
         """, unsafe_allow_html=True)
 
         if not doc_infos:
             st.markdown("""
             <div class="modern-card" style="text-align:center; padding:32px 20px;">
-                <div style="font-size:2.5rem; margin-bottom:10px;">📂</div>
                 <div style="font-weight:700; font-size:1.05rem; color:#f8fafc; margin-bottom:6px;">Your workspace is empty</div>
                 <p style="font-size:0.85rem; color:#94a3b8; max-width:340px; margin:0 auto 16px auto;">
-                    Upload your own PDF, DOCX, or TXT documents, or load the pre-packaged sample documents for instant testing.
+                    Upload documents or load pre-packaged benchmark samples for instant evaluation.
                 </p>
             </div>
             """, unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("➕ Upload Documents", key="dash_empty_upload", use_container_width=True):
+                if st.button("Upload Documents", key="dash_empty_upload", use_container_width=True):
                     on_navigate("Documents")
             with c2:
-                if st.button("📦 Load Sample Documents", key="dash_empty_samples", use_container_width=True):
+                if st.button("Load Sample Papers", key="dash_empty_samples", use_container_width=True):
                     on_load_samples()
         else:
             for doc in doc_infos[:3]:
@@ -114,27 +190,25 @@ def render_dashboard(
                 )
             if len(doc_infos) > 3:
                 st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
-                if st.button(f"📚 View All ({len(doc_infos)}) Documents in Library →", key="dash_view_all_docs", use_container_width=True):
+                if st.button(f"View All ({len(doc_infos)}) Documents in Library", key="dash_view_all_docs", use_container_width=True):
                     on_navigate("Documents")
 
     with col_act:
         st.markdown("""
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">⚡ Recent AI Activity</h3>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;">Intelligence Activity Feed</h3>
         </div>
         """, unsafe_allow_html=True)
 
         if not recent_activities:
             st.markdown("""
             <div class="activity-item" style="padding:28px 18px; text-align:center;">
-                <div style="font-size:2rem; margin-bottom:8px;">🕘</div>
-                <div style="font-weight:600; font-size:0.9rem; color:#cbd5e1;">No recent activity yet</div>
-                <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">Ask questions or run semantic searches to see activity logs here.</div>
+                <div style="font-weight:600; font-size:0.9rem; color:#cbd5e1;">No recent activity logged</div>
+                <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">Ask questions or run semantic searches to see real-time activity logs here.</div>
             </div>
             """, unsafe_allow_html=True)
         else:
             for act in recent_activities[:4]:
-                icon = act.get("icon", "💬")
                 title = act.get("title", "AI Query")
                 time_str = act.get("time", "Just now")
                 desc = act.get("desc", "")
@@ -142,18 +216,13 @@ def render_dashboard(
                 st.markdown(f"""
                 <div class="activity-item">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                            <div style="font-size:1.05rem; background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:8px; flex-shrink:0;">
-                                {icon}
-                            </div>
-                            <div style="font-weight:600; font-size:0.86rem; color:#f8fafc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{title}">
-                                {title}
-                            </div>
+                        <div style="font-weight:600; font-size:0.86rem; color:#f8fafc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{title}">
+                            {title}
                         </div>
-                        <span style="font-size:0.72rem; color:#818cf8; background:rgba(99,102,241,0.1); padding:2px 8px; border-radius:9999px; border:1px solid rgba(99,102,241,0.2); flex-shrink:0;">
+                        <span style="font-size:0.72rem; color:#38bdf8; background:rgba(6,182,212,0.1); padding:2px 8px; border-radius:9999px; border:1px solid rgba(6,182,212,0.25); flex-shrink:0;">
                             {time_str}
                         </span>
                     </div>
-                    {f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:6px; line-height:1.4; padding-left:36px;">{desc}</div>' if desc else ''}
+                    {f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:6px; line-height:1.4;">{desc}</div>' if desc else ''}
                 </div>
                 """, unsafe_allow_html=True)

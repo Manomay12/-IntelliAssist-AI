@@ -71,6 +71,7 @@ from services.summarizer import DocumentSummarizer
 from services.sentiment_analyzer import SentimentIntentAnalyzer
 from services.conversation_manager import ConversationManager
 from services.question_generator import QuestionGenerator
+from services.doc_classifier import DocumentClassifier
 
 # Page Views
 from pages_views.dashboard_view import render_dashboard
@@ -180,8 +181,22 @@ def initialize_state():
     if "question_generator" not in st.session_state:
         st.session_state.question_generator = QuestionGenerator()
 
+    if "doc_classifier" not in st.session_state:
+        st.session_state.doc_classifier = DocumentClassifier(embedding_service=st.session_state.embedding_service)
+
     if "document_registry" not in st.session_state:
         st.session_state.document_registry = load_document_registry()
+
+    # Ensure all registered documents have a valid semantic category
+    if st.session_state.document_registry:
+        reg_updated = False
+        for fname, dinfo in st.session_state.document_registry.items():
+            if not dinfo.get("category"):
+                cat_eval = st.session_state.doc_classifier.classify_document(dinfo.get("full_text", ""), fname)
+                dinfo["category"] = cat_eval.get("category", "General Document") if isinstance(cat_eval, dict) else str(cat_eval)
+                reg_updated = True
+        if reg_updated:
+            save_document_registry(st.session_state.document_registry)
 
     # Synchronize registry documents with vector store on startup only if vector store is unpopulated
     vdb_docs = set(st.session_state.vector_store.get_all_documents())
@@ -195,7 +210,7 @@ def initialize_state():
                         "pages": [{"page_number": 1, "total_pages": dinfo.get("total_pages", 1), "text": dinfo.get("full_text")}]
                     })
                     if chk:
-                        st.session_state.vector_store.add_documents(chk)
+                        st.session_state.vector_store.add_documents(chk, persist=False)
                         sync_needed = True
                 except Exception:
                     pass
@@ -204,7 +219,7 @@ def initialize_state():
 
     if "activity_logs" not in st.session_state:
         st.session_state.activity_logs = [
-            {"icon": "⚡", "title": "System Initialized", "time": "Just now", "desc": "Vector database loaded with cosine index."}
+            {"icon": "Init", "title": "System Initialized", "time": "Just now", "desc": "Vector database loaded with cosine index and hybrid BM25."}
         ]
 
     if "total_questions" not in st.session_state:
@@ -248,24 +263,15 @@ def record_activity(icon: str, title: str, desc: str = ""):
         st.session_state.activity_logs.pop()
 
 def process_and_index_files(files_or_paths):
-    """Process a list of files or file paths through the 7-step indexing pipeline."""
-    pipeline_steps = [
-        "1. Uploading & Reading byte stream",
-        "2. Extracting text from document layers",
-        "3. Cleaning formatting & normalizing layout",
-        "4. Splitting into overlapping chunks (500-chars)",
-        "5. Generating dense 384-dim semantic embeddings",
-        "6. Indexing vectors into Cosine Vector Database",
-        "7. Verification & Ready"
-    ]
-
+    """Process a list of files or file paths through the single-pass batch indexing pipeline."""
     progress_bar = st.progress(0, text="Initializing processing pipeline...")
     step_container = st.empty()
 
     chunker = TextChunker(chunk_size=DEFAULT_CHUNK_SIZE, chunk_overlap=DEFAULT_CHUNK_OVERLAP)
-    new_chunks_count = 0
+    total_files = len(files_or_paths)
+    all_new_chunks = []
 
-    for file_obj in files_or_paths:
+    for f_idx, file_obj in enumerate(files_or_paths):
         if isinstance(file_obj, (str, Path)):
             path = Path(file_obj)
             filename = path.name
@@ -277,42 +283,32 @@ def process_and_index_files(files_or_paths):
             file_bytes = file_obj.getvalue()
             file_size = len(file_bytes)
 
-        # Step 1-2
-        progress_bar.progress(25, text=f"Extracting text from '{filename}'...")
+        pct = int(10 + (f_idx / max(1, total_files)) * 60)
+        progress_bar.progress(pct, text=f"Processing '{filename}'...")
         step_container.markdown(f"""
-        <div class="step-item step-active">⚡ {pipeline_steps[1]}: <b>{filename}</b></div>
+        <div class="step-item step-active">Extracting & analyzing: <b>{filename}</b></div>
         """, unsafe_allow_html=True)
-        time.sleep(0.1)
 
         file_hash = DocumentProcessor.compute_file_hash(file_bytes)
-        existing_doc_name = st.session_state.vector_store.get_document_by_hash(file_hash)
-        if existing_doc_name and existing_doc_name != filename:
-            st.info(f"ℹ️ File content matches existing document '{existing_doc_name}'. Updating indexing.")
-
         processed_doc = DocumentProcessor.process_file(file_bytes, filename)
         if processed_doc.get("warning"):
             st.warning(processed_doc["warning"])
-        
-        # Step 3-4
-        progress_bar.progress(55, text=f"Chunking document '{filename}'...")
-        step_container.markdown(f"""
-        <div class="step-item step-active">🧩 {pipeline_steps[3]}: <b>{len(processed_doc.get('pages', []))} pages</b></div>
-        """, unsafe_allow_html=True)
-        time.sleep(0.1)
+
+        full_text = processed_doc.get("full_text", "")
+        # Semantic Document Classification
+        cat_res = st.session_state.doc_classifier.classify_document(full_text, filename)
+        category = cat_res.get("category", "General Document") if isinstance(cat_res, dict) else str(cat_res)
 
         chunks = chunker.chunk_document(processed_doc)
+        for c in chunks:
+            c["file_hash"] = file_hash
+            c["category"] = category
 
-        # Step 5-6
-        progress_bar.progress(85, text=f"Generating embeddings & indexing vectors for '{filename}'...")
-        step_container.markdown(f"""
-        <div class="step-item step-active">⚡ {pipeline_steps[4]}: <b>{len(chunks)} chunks</b></div>
-        """, unsafe_allow_html=True)
-        time.sleep(0.1)
-
-        # Clean up any existing index for this filename before re-indexing
-        st.session_state.vector_store.delete_document(filename)
-        st.session_state.vector_store.add_documents(chunks)
-        new_chunks_count += len(chunks)
+        # Remove previous chunks for this file in-memory
+        st.session_state.vector_store.delete_document(filename, persist=False)
+        # Add new chunks in-memory
+        st.session_state.vector_store.add_documents(chunks, persist=False)
+        all_new_chunks.extend(chunks)
 
         # Record in registry
         st.session_state.document_registry[filename] = {
@@ -320,28 +316,28 @@ def process_and_index_files(files_or_paths):
             "file_hash": file_hash,
             "file_ext": processed_doc.get("file_ext", ".txt"),
             "file_size": file_size,
+            "category": category,
             "total_pages": processed_doc.get("total_pages", 1),
             "total_chars": processed_doc.get("total_chars", 0),
             "total_words": processed_doc.get("total_words", 0),
             "chunk_count": len(chunks),
-            "full_text": processed_doc.get("full_text", ""),
+            "full_text": full_text,
             "upload_date": time.strftime("%b %d, %H:%M"),
             "status": "Ready"
         }
 
-    # Save both document registry and vector database index to disk
+    # Batch save once to disk
+    progress_bar.progress(90, text="Synchronizing vector index & persistence layers...")
     save_document_registry(st.session_state.document_registry)
     st.session_state.vector_store.save_to_disk()
 
-    # Step 7
-    progress_bar.progress(100, text="✓ Indexing complete!")
+    progress_bar.progress(100, text="Indexing complete")
     step_container.markdown(f"""
-    <div class="step-item step-done">✓ <b>Document(s) successfully indexed into Vector DB ({new_chunks_count} chunks ready)</b></div>
+    <div class="step-item step-done"><b>{len(files_or_paths)} file(s) indexed ({len(all_new_chunks)} chunks ready)</b></div>
     """, unsafe_allow_html=True)
-    time.sleep(0.3)
 
-    record_activity("📄", f"Indexed {len(files_or_paths)} file(s)", f"Added {new_chunks_count} chunks to vector store.")
-    st.toast(f"Successfully indexed {len(files_or_paths)} document(s)!", icon="🎉")
+    record_activity("Doc", f"Indexed {len(files_or_paths)} file(s)", f"Added {len(all_new_chunks)} chunks to vector store.")
+    st.toast(f"Successfully indexed {len(files_or_paths)} document(s)!")
 
 def load_sample_documents_action():
     """Load and index the 3 bundled academic sample documents."""
@@ -441,8 +437,8 @@ def handle_delete_doc(filename: str):
     if filename in st.session_state.document_registry:
         del st.session_state.document_registry[filename]
         save_document_registry(st.session_state.document_registry)
-    record_activity("🗑️", f"Deleted {filename}", "Removed chunks from vector store.")
-    st.toast(f"Deleted {filename} and updated vector index.", icon="🗑️")
+    record_activity("Delete", f"Deleted {filename}", "Removed chunks from vector store.")
+    st.toast(f"Deleted {filename} and updated vector index.")
     st.rerun()
 
 def handle_chat_message(prompt: str, doc_filter: str):
@@ -478,7 +474,7 @@ def handle_chat_message(prompt: str, doc_filter: str):
     # Telemetry
     st.session_state.total_questions += 1
     short_q = (prompt[:22] + "...") if len(prompt) > 25 else prompt
-    record_activity("💬", f"Q&A: {short_q}", f"Retrieved {len(rag_res.get('sources', []))} chunks ({rag_res.get('latency_sec', 0.35)}s)")
+    record_activity("Chat", f"Q&A: {short_q}", f"Retrieved {len(rag_res.get('sources', []))} passages ({rag_res.get('latency_sec', 0.35):.2f}s)")
 
 def upload_and_route_to_chat(files):
     """Index newly uploaded files and set active chat scope to the uploaded document."""
@@ -489,7 +485,7 @@ def upload_and_route_to_chat(files):
         st.session_state.chat_doc_filter = fname
     st.rerun()
 
-# Page: 🏠 Dashboard
+# Page: Dashboard
 if st.session_state.nav_page == "Dashboard":
     render_dashboard(
         doc_infos=doc_list,
@@ -503,10 +499,11 @@ if st.session_state.nav_page == "Dashboard":
         on_summarize_doc=handle_summarize_doc,
         on_chat_doc=handle_chat_doc,
         on_delete_doc=handle_delete_doc,
-        on_load_samples=load_sample_documents_action
+        on_load_samples=load_sample_documents_action,
+        on_upload_files=lambda files: (process_and_index_files(files), st.rerun())
     )
 
-# Page: 📄 Documents
+# Page: Documents
 elif st.session_state.nav_page == "Documents":
     render_documents_page(
         doc_infos=doc_list,
@@ -519,7 +516,7 @@ elif st.session_state.nav_page == "Documents":
         selected_doc_preview=st.session_state.selected_doc_preview
     )
 
-# Page: 💬 AI Chat
+# Page: AI Chat
 elif st.session_state.nav_page == "AI Chat":
     render_chat_page(
         messages=st.session_state.conversation_manager.messages,
@@ -540,12 +537,12 @@ elif st.session_state.nav_page == "AI Chat":
         question_generator=st.session_state.question_generator
     )
 
-# Page: 🔎 Semantic Search
+# Page: Semantic Search
 elif st.session_state.nav_page == "Semantic Search":
     def do_semantic_search(query: str, top_k: int, threshold: float, doc_filter: str):
         st.session_state.total_searches += 1
         short_q = (query[:22] + "...") if len(query) > 25 else query
-        record_activity("🔎", f"Search: {short_q}", f"Top-{top_k} matches retrieved")
+        record_activity("Search", f"Search: {short_q}", f"Top-{top_k} matches retrieved")
         return st.session_state.vector_store.search(
             query=query,
             top_k=top_k,
@@ -561,7 +558,7 @@ elif st.session_state.nav_page == "Semantic Search":
         question_generator=st.session_state.question_generator
     )
 
-# Page: 📝 Summarizer
+# Page: Summarizer
 elif st.session_state.nav_page == "Summarizer":
     def do_summarize(doc_name: str, mode: str):
         doc_info = st.session_state.document_registry.get(doc_name, {})
@@ -570,7 +567,7 @@ elif st.session_state.nav_page == "Summarizer":
         st.session_state.current_summary_data = summary_result
         st.session_state.total_summaries += 1
         short_d = (doc_name[:22] + "...") if len(doc_name) > 25 else doc_name
-        record_activity("📝", f"Summary: {short_d}", f"Mode: {mode}")
+        record_activity("Summary", f"Summary: {short_d}", f"Mode: {mode}")
         return summary_result
 
     def do_compare(doc_a_name: str, doc_b_name: str):
@@ -578,7 +575,7 @@ elif st.session_state.nav_page == "Summarizer":
         doc_b_info = st.session_state.document_registry.get(doc_b_name, {})
         text_a = doc_a_info.get("full_text", "")
         text_b = doc_b_info.get("full_text", "")
-        record_activity("⚖️", f"Compare: {doc_a_name[:12]} vs {doc_b_name[:12]}", "Cross-document matrix generated")
+        record_activity("Compare", f"Compare: {doc_a_name[:12]} vs {doc_b_name[:12]}", "Cross-document matrix generated")
         return st.session_state.summarizer.compare_documents(doc_a_name, text_a, doc_b_name, text_b)
 
     render_summarizer_page(
@@ -586,7 +583,9 @@ elif st.session_state.nav_page == "Summarizer":
         on_summarize=do_summarize,
         on_compare=do_compare,
         current_summary_data=st.session_state.current_summary_data,
-        default_doc=st.session_state.target_summary_doc
+        default_doc=st.session_state.target_summary_doc,
+        doc_registry=st.session_state.document_registry,
+        summarizer_service=st.session_state.summarizer
     )
 
 # Page: 🧠 Sentiment & Intent
@@ -600,7 +599,7 @@ elif st.session_state.nav_page == "Sentiment & Intent":
         intent = st.session_state.sentiment_analyzer.analyze_intent(full_text)
         trends = st.session_state.sentiment_analyzer.analyze_chunk_trends(chunks)
         short_d = (doc_name[:22] + "...") if len(doc_name) > 25 else doc_name
-        record_activity("🧠", f"Tone: {short_d}", f"{sent['label']} ({sent['confidence']}%)")
+        record_activity("Tone", f"Tone: {short_d}", f"{sent['label']} ({sent['confidence']}%)")
         return {"sentiment": sent, "intent": intent, "trends": trends}
 
     def analyze_custom(text: str):
@@ -615,7 +614,7 @@ elif st.session_state.nav_page == "Sentiment & Intent":
         default_doc=st.session_state.target_sentiment_doc
     )
 
-# Page: 📊 Analytics
+# Page: Analytics
 elif st.session_state.nav_page == "Analytics":
     avg_lat = sum(st.session_state.latencies) / max(1, len(st.session_state.latencies))
     render_analytics_page(
@@ -627,11 +626,11 @@ elif st.session_state.nav_page == "Analytics":
         avg_latency=avg_lat
     )
 
-# Page: 🕘 History
+# Page: History
 elif st.session_state.nav_page == "History":
     def handle_rename_session(s_id: str, new_name: str):
         st.session_state.conversation_manager.rename_session(s_id, new_name)
-        st.toast("Renamed conversation!", icon="✏️")
+        st.toast("Renamed conversation.")
 
     render_history_page(
         sessions=all_sessions,
@@ -643,7 +642,7 @@ elif st.session_state.nav_page == "History":
         on_new_chat=handle_new_chat
     )
 
-# Page: ⚙️ Settings
+# Page: Settings
 elif st.session_state.nav_page == "Settings":
     def handle_save_settings(new_settings: Dict[str, Any]):
         st.session_state.settings.update(new_settings)

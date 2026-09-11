@@ -1,22 +1,24 @@
 """
 Vector Database engine for IntelliAssist AI.
-Manages chunk storage, embedding indexing, cosine similarity search, duplicate detection, and persistence.
+Manages chunk storage, dense embedding indexing, BM25 Okapi lexical indexing,
+Hybrid Reciprocal Rank Fusion retrieval, duplicate detection, and persistent disk caching.
 """
 
 import json
 import os
 import logging
-# pyrefly: ignore [missing-import]
-import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+import numpy as np
+
 from utils.config import VECTOR_DB_DIR
 from services.embeddings import EmbeddingService
+from services.hybrid_retriever import HybridRetriever
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
-    """In-memory & persistent Vector Database supporting high-speed cosine similarity retrieval."""
+    """In-memory & persistent Vector Database supporting dense cosine and hybrid RRF retrieval."""
 
     def __init__(self, embedding_service: Optional[EmbeddingService] = None, db_dir: Path = VECTOR_DB_DIR):
         self.embedding_service = embedding_service or EmbeddingService()
@@ -26,11 +28,12 @@ class VectorStore:
 
         self.chunks: List[Dict[str, Any]] = []
         self.vectors: np.ndarray = np.empty((0, self.embedding_service.dense_dim), dtype=np.float32)
+        self.hybrid_retriever = HybridRetriever()
 
         self.load_from_disk()
 
-    def add_documents(self, chunks: List[Dict[str, Any]]) -> int:
-        """Add new chunks to the vector database and index their embeddings."""
+    def add_documents(self, chunks: List[Dict[str, Any]], persist: bool = True) -> int:
+        """Add new chunks to the vector database, update BM25 index, and optionally persist to disk."""
         if not chunks:
             return 0
 
@@ -45,14 +48,26 @@ class VectorStore:
             self.chunks.extend(chunks)
             self.vectors = np.vstack([self.vectors, new_vectors])
 
-        self.save_to_disk()
+        # Synchronize BM25 lexical index
+        self.hybrid_retriever.update_bm25_index(self.chunks)
+
+        if persist:
+            self.save_to_disk()
         logger.info("Indexed %d new chunks into Vector Store (total: %d)", len(chunks), len(self.chunks))
         return len(chunks)
 
-    def search(self, query: str, top_k: int = 4, threshold: float = 0.0, filter_doc: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 4,
+        threshold: float = 0.0,
+        filter_doc: Optional[str] = None,
+        use_hybrid: bool = True
+    ) -> List[Dict[str, Any]]:
         """
-        Perform semantic search against indexed chunks using cosine similarity.
-        Returns top-k matching chunks with similarity scores.
+        Perform search against indexed chunks.
+        When use_hybrid is True (default), fuses Dense Cosine Embeddings with BM25 Lexical search via RRF.
+        Returns top-k matching chunks with calibrated scores and match explanations.
         """
         if len(self.chunks) == 0 or self.vectors.shape[0] == 0:
             return []
@@ -66,33 +81,36 @@ class VectorStore:
         q_vec = q_vec / q_norm
 
         # Compute cosine similarity
-        scores = np.dot(self.vectors, q_vec)
+        dense_scores = np.dot(self.vectors, q_vec)
 
-        # Keyword boost: Calculate keyword overlap bonus for precise entity matching
-        query_words = set([w.lower() for w in query.split() if len(w) > 2])
+        if use_hybrid:
+            hybrid_results = self.hybrid_retriever.hybrid_search(
+                query=query,
+                chunks=self.chunks,
+                dense_scores=dense_scores,
+                top_k=top_k * 2,  # retrieve extra candidates for thresholding
+                filter_doc=filter_doc
+            )
+            # Filter by threshold
+            filtered = [r for r in hybrid_results if r.get("score", 0.0) >= threshold]
+            return filtered[:top_k]
 
+        # Pure Dense Fallback
         results = []
-        for idx, score in enumerate(scores):
+        for idx, score in enumerate(dense_scores):
             chunk = self.chunks[idx]
-
-            # Optional document filter
             if filter_doc and filter_doc != "All Documents" and chunk.get("filename") != filter_doc:
                 continue
 
-            chunk_text = chunk.get("text", "").lower()
-            overlap_count = sum(1 for w in query_words if w in chunk_text)
-            keyword_bonus = min(0.35, overlap_count * 0.07)
-
-            final_score = float(score * 0.7 + keyword_bonus * 0.3)
-            final_score = max(0.0, min(0.99, final_score))
-
+            final_score = max(0.0, min(0.99, float(score)))
             if final_score >= threshold:
                 item = dict(chunk)
-                item["score"] = final_score
-                item["similarity_percentage"] = int(final_score * 100)
+                item["score"] = round(final_score, 4)
+                item["similarity_percentage"] = int(round(final_score * 100))
+                item["match_type"] = "Semantic Match"
+                item["match_explanation"] = f"Retrieved via semantic embedding similarity (cosine: {final_score:.2f})"
                 results.append(item)
 
-        # Sort descending by score
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
@@ -128,7 +146,7 @@ class VectorStore:
         """Retrieve all chunks belonging to a specific document."""
         return [c for c in self.chunks if c.get("filename") == filename]
 
-    def delete_document(self, filename: str) -> int:
+    def delete_document(self, filename: str, persist: bool = True) -> int:
         """Remove all chunks associated with a specific document and re-index."""
         if not filename:
             return 0
@@ -142,7 +160,10 @@ class VectorStore:
                 self.vectors = self.vectors[keep_indices]
             else:
                 self.vectors = np.empty((0, self.embedding_service.dense_dim), dtype=np.float32)
-            self.save_to_disk()
+
+            self.hybrid_retriever.update_bm25_index(self.chunks)
+            if persist:
+                self.save_to_disk()
             logger.info("Deleted document '%s' (removed %d chunks)", filename, removed_count)
 
         return removed_count
@@ -151,6 +172,7 @@ class VectorStore:
         """Clear all stored vectors and chunks."""
         self.chunks = []
         self.vectors = np.empty((0, self.embedding_service.dense_dim), dtype=np.float32)
+        self.hybrid_retriever = HybridRetriever()
         if self.chunks_file.exists():
             self.chunks_file.unlink()
         if self.vectors_file.exists():
@@ -174,6 +196,7 @@ class VectorStore:
                 with open(self.chunks_file, "r", encoding="utf-8") as f:
                     self.chunks = json.load(f)
                 self.vectors = np.load(self.vectors_file)
+                self.hybrid_retriever.update_bm25_index(self.chunks)
                 logger.info("Loaded %d chunks from vector disk cache.", len(self.chunks))
         except Exception as e:
             logger.warning("Failed to load vector store from disk: %s", e)

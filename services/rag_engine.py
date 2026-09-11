@@ -1,14 +1,18 @@
 """
 Retrieval-Augmented Generation (RAG) engine for IntelliAssist AI.
-Features intelligent query normalization, per-document strict scoping, auto document mention detection,
-adaptive high-coverage semantic retrieval, low-confidence hallucination protection, and exhaustive academic explanation synthesis.
+Features ML query understanding, hybrid BM25 + dense semantic retrieval, neural reranking,
+authentic confidence estimation, hallucination safeguards, and source-grounded response synthesis.
 """
 
 import re
 import logging
 from typing import List, Dict, Any, Optional, Tuple
+import numpy as np
+
 from services.vector_store import VectorStore
 from services.llm_service import LLMService
+from services.query_classifier import QueryIntentClassifier
+from services.reranker import NeuralReranker
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +43,21 @@ GREETING_PATTERNS = [
 ]
 
 class RAGEngine:
-    """End-to-end robust RAG orchestrator delivering exhaustive explanations with multi-document intelligence."""
+    """End-to-end robust RAG orchestrator delivering grounded explanations with multi-document intelligence."""
 
-    def __init__(self, vector_store: VectorStore, llm_service: LLMService):
+    def __init__(
+        self,
+        vector_store: VectorStore,
+        llm_service: LLMService,
+        query_classifier: Optional[QueryIntentClassifier] = None,
+        reranker: Optional[NeuralReranker] = None
+    ):
         self.vector_store = vector_store
         self.llm_service = llm_service
+        self.query_classifier = query_classifier or QueryIntentClassifier(
+            embedding_service=vector_store.embedding_service
+        )
+        self.reranker = reranker or NeuralReranker()
 
     def normalize_query(self, query: str) -> Tuple[str, str, bool]:
         """
@@ -103,17 +117,17 @@ class RAGEngine:
         question: str,
         top_k: int = 6,
         threshold: float = 0.08,
-        min_confidence_threshold: float = 0.25,
+        min_confidence_threshold: float = 0.20,
         filter_doc: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Execute full RAG retrieval and generation pipeline:
-        1. Preprocess & normalize query (handle typos, slang, greetings, broad queries).
-        2. Handle greetings/onboarding gracefully with active document guides.
-        3. Strictly enforce document filtering if filter_doc or mention is present.
-        4. High-coverage semantic retrieval across vector index.
-        5. Check confidence thresholds (low-confidence hallucination protection).
-        6. Synthesize multi-section, in-depth academic answers with verified source citations.
+        1. Preprocess query & ML Query Intent Classification.
+        2. Handle greetings gracefully with active document guides.
+        3. Hybrid Retrieval: Dense Embeddings + BM25 Lexical search via Reciprocal Rank Fusion (RRF).
+        4. Neural Reranking: cross-encoder scoring on candidate chunks.
+        5. Calculated confidence check (anti-hallucination protection).
+        6. Context synthesis & LLM generation with exact source citations.
         """
         raw_question = question.strip()
         if not raw_question:
@@ -124,11 +138,17 @@ class RAGEngine:
                 "provider": self.llm_service.provider,
                 "latency_sec": 0.1,
                 "is_demo": True,
-                "is_low_confidence": False
+                "is_low_confidence": False,
+                "query_intent": "QUESTION_ANSWERING",
+                "confidence": 0.0
             }
 
-        # 1. Normalize and detect intent
-        expanded_query, intent, is_greeting = self.normalize_query(raw_question)
+        # 1. ML Query Intent Classification & Normalization
+        intent_info = self.query_classifier.classify(raw_question)
+        ml_intent = intent_info.get("primary_intent", "QUESTION_ANSWERING")
+        ml_intent_confidence = intent_info.get("confidence", 0.5)
+
+        expanded_query, fallback_intent, is_greeting = self.normalize_query(raw_question)
         available_docs = self.vector_store.get_all_documents()
 
         # Check if query explicitly mentions a document
@@ -137,21 +157,20 @@ class RAGEngine:
         if active_filter_doc == "All Documents":
             active_filter_doc = None
 
-        # 2. Special handler for greetings & first-time onboarding
+        # 2. Greeting & Onboarding handler
         if is_greeting:
-            doc_list_str = "\n".join([f"- 📄 **{doc}**" for doc in available_docs[:5]]) if available_docs else "*(No documents uploaded yet. Upload documents on the Documents page to begin!)*"
+            doc_list_str = "\n".join([f"- **{doc}**" for doc in available_docs[:5]]) if available_docs else "*(No documents uploaded yet. Upload documents on the Documents page to begin!)*"
             greeting_msg = (
-                f"### 👋 Hello! Welcome to **IntelliAssist AI**\n\n"
-                f"I am your intelligent document analysis assistant. I can read, analyze, summarize, "
-                f"and provide **exhaustive, multi-section explanations** for any uploaded files with verified citations.\n\n"
-                f"#### 📚 Indexed Documents Available Right Now:\n"
+                f"### Welcome to **IntelliAssist AI**\n\n"
+                f"I am your document intelligence workspace. I can read, analyze, summarize, "
+                f"and provide grounded explanations for any uploaded files with verified citations.\n\n"
+                f"#### Indexed Documents Available:\n"
                 f"{doc_list_str}\n\n"
-                f"#### 💡 Example Questions for Full Explanation:\n"
+                f"#### Suggested Inquiries:\n"
                 f"- *\"Provide a complete breakdown of the methodology and system architecture\"*\n"
                 f"- *\"What are the empirical benchmarks, key results, and statistical findings?\"*\n"
                 f"- *\"Explain the core technical concepts step-by-step with citations\"*\n"
-                f"- *\"What are the practical applications, strengths, and limitations?\"*\n\n"
-                f"You can ask anything in plain words, even if your question is short or informal!"
+                f"- *\"What are the practical applications, strengths, and limitations?\"*\n"
             )
             return {
                 "answer": greeting_msg,
@@ -161,62 +180,89 @@ class RAGEngine:
                 "model": self.llm_service.model_name,
                 "latency_sec": 0.15,
                 "is_demo": True,
-                "is_low_confidence": False
+                "is_low_confidence": False,
+                "query_intent": "QUESTION_ANSWERING",
+                "confidence": 1.0
             }
 
-        # 3. High-Coverage Semantic Search Retrieval
+        # 3. Hybrid Retrieval (Dense Semantic + BM25 Lexical via RRF)
         retrieved_chunks = self.vector_store.search(
             query=expanded_query,
-            top_k=top_k,
+            top_k=top_k * 2,  # retrieve candidate pool for reranking
             threshold=threshold,
-            filter_doc=active_filter_doc
+            filter_doc=active_filter_doc,
+            use_hybrid=True
         )
 
         # Fallback 1: If search returned nothing, try with zero threshold
         if not retrieved_chunks:
             retrieved_chunks = self.vector_store.search(
                 query=raw_question,
-                top_k=top_k,
+                top_k=top_k * 2,
                 threshold=0.0,
-                filter_doc=active_filter_doc
+                filter_doc=active_filter_doc,
+                use_hybrid=True
             )
 
-        # Fallback 2: Target document enforcement
+        # Fallback 2: Target document enforcement with authentic cosine similarity
         if active_filter_doc:
             doc_all_chunks = [c for c in self.vector_store.chunks if c.get("filename") == active_filter_doc]
             if doc_all_chunks:
                 retrieved_chunks = [c for c in retrieved_chunks if c.get("filename") == active_filter_doc]
                 if len(retrieved_chunks) < min(top_k, len(doc_all_chunks)):
                     existing_ids = set(c.get("chunk_id") for c in retrieved_chunks)
+                    q_vec = self.vector_store.embedding_service.embed_query(raw_question)
+                    q_norm = np.linalg.norm(q_vec)
+                    if q_norm > 1e-9:
+                        q_vec = q_vec / q_norm
+
                     for c in doc_all_chunks:
                         if c.get("chunk_id") not in existing_ids:
                             c_item = dict(c)
-                            c_item["score"] = 0.88
-                            c_item["similarity_percentage"] = 88
+                            # Authentically calculate cosine similarity
+                            c_vec = self.vector_store.embedding_service.embed_query(c.get("text", ""))
+                            c_norm = np.linalg.norm(c_vec)
+                            if c_norm > 1e-9:
+                                c_vec = c_vec / c_norm
+                            calc_sim = float(np.dot(q_vec, c_vec))
+                            calc_score = max(0.0, min(0.99, calc_sim))
+                            c_item["score"] = round(calc_score, 4)
+                            c_item["similarity_percentage"] = int(round(calc_score * 100))
+                            c_item["match_type"] = "Semantic Match"
+                            c_item["match_explanation"] = f"Document-scoped semantic match (cosine: {calc_score:.2f})"
                             retrieved_chunks.append(c_item)
-                        if len(retrieved_chunks) >= top_k:
+                        if len(retrieved_chunks) >= top_k * 2:
                             break
         elif not retrieved_chunks and len(self.vector_store.chunks) > 0:
-            retrieved_chunks = self.vector_store.chunks[:top_k]
+            retrieved_chunks = list(self.vector_store.chunks[:top_k * 2])
 
-        # 4. Low-Confidence & No-Answer Protection:
-        max_score = max([c.get("score", 0.0) for c in retrieved_chunks], default=0.0)
-        
-        # Check if user query has virtually zero conceptual overlap with corpus
+        # 4. Neural Cross-Encoder Reranking
+        if retrieved_chunks:
+            retrieved_chunks = self.reranker.rerank(
+                query=raw_question,
+                chunks=retrieved_chunks,
+                top_k=top_k
+            )
+
+        # 5. Genuine Confidence Computation & Low-Confidence Protection
+        scores = [float(c.get("score", 0.0)) for c in retrieved_chunks]
+        max_score = max(scores, default=0.0)
+        mean_top_score = float(np.mean(scores[:3])) if scores else 0.0
+        calculated_confidence = round(float(0.70 * max_score + 0.30 * mean_top_score), 4)
+
         if active_filter_doc:
             is_low_confidence = (len(retrieved_chunks) == 0)
         else:
             is_low_confidence = (len(retrieved_chunks) == 0 or max_score < min_confidence_threshold)
 
         if is_low_confidence and len(self.vector_store.chunks) > 0:
-            logger.info("Low confidence query detected (max score: %.2f for '%s')", max_score, raw_question)
+            logger.info("Low confidence query detected (score: %.2f for '%s')", max_score, raw_question)
             no_answer_msg = (
-                "### ⚠️ Insufficient Document Evidence\n\n"
-                "I couldn't find sufficient information in the uploaded documents to answer this question confidently.\n\n"
-                "💡 **Recommended next steps:**\n"
+                "I couldn't find enough relevant information in your uploaded documents to answer this reliably.\n\n"
+                "**Recommendations:**\n"
                 "- Verify if the topic is covered in your uploaded files.\n"
-                "- Check the **Target Scope** filter in the toolbar to ensure you are searching across all files or the intended document.\n"
-                "- Rephrase your question using specific keywords or terms mentioned in the document text."
+                "- Select a specific document scope or 'All Documents' in the toolbar.\n"
+                "- Rephrase your question using specific terminology from the document text."
             )
             return {
                 "answer": no_answer_msg,
@@ -226,28 +272,28 @@ class RAGEngine:
                 "model": self.llm_service.model_name,
                 "latency_sec": 0.1,
                 "is_demo": True,
-                "is_low_confidence": True
+                "is_low_confidence": True,
+                "query_intent": ml_intent,
+                "confidence": calculated_confidence
             }
 
         if not retrieved_chunks:
             return {
                 "answer": (
-                    "### 📄 No Matching Document Found\n\n"
                     f"I could not locate content for **{active_filter_doc or 'your query'}** in the database.\n\n"
-                    "💡 **How to resolve:**\n"
-                    "1. Check the **Target Document Scope** dropdown in the chat toolbar.\n"
-                    "2. Ensure the document is uploaded and indexed on the **📄 Documents** page.\n"
-                    "3. Select **'All Documents'** to search across all indexed files."
+                    "Ensure your documents are uploaded and indexed before querying."
                 ),
                 "sources": [],
                 "retrieved_count": 0,
                 "provider": self.llm_service.provider,
                 "latency_sec": 0.1,
                 "is_demo": True,
-                "is_low_confidence": True
+                "is_low_confidence": True,
+                "query_intent": ml_intent,
+                "confidence": 0.0
             }
 
-        # 5. Build context text with page demarcations
+        # 6. Build context text with explicit page demarcations
         context_parts = []
         for i, chunk in enumerate(retrieved_chunks, 1):
             doc_name = chunk.get("filename", "Unknown Document")
@@ -257,35 +303,49 @@ class RAGEngine:
 
         full_context = "\n\n".join(context_parts)
 
-        # 6. Formulate intelligent, query-specific RAG system instruction
-        target_clause = f"Focus your answer strictly and exclusively on the document '{active_filter_doc}'." if active_filter_doc else "Synthesize information from the relevant document(s) provided."
-        
-        is_summary_request = bool(re.search(r"\b(?:summary|summarize|overview|full breakdown|tell me everything|main points|all findings)\b", raw_question, re.IGNORECASE))
-        
-        if is_summary_request:
+        # 7. Formulate intelligent, query-specific RAG system instruction
+        target_clause = f"Focus your answer strictly on the document '{active_filter_doc}'." if active_filter_doc else "Synthesize information from the relevant document(s) provided."
+
+        if ml_intent == "SUMMARIZATION":
             style_guide = (
-                "The user requested a broad summary or overview. Provide a well-structured response with:\n"
-                "1. 🎯 Executive Overview & Main Takeaways\n"
-                "2. 🔍 Core Methodology & Key Concepts\n"
-                "3. 📊 Notable Findings & Metrics\n"
-                "Keep each section focused and clearly formatted."
+                "The user requested an overview or summary. Provide a structured response with:\n"
+                "1. Executive Overview & Main Takeaways\n"
+                "2. Core Methodology & Technical Breakdown\n"
+                "3. Notable Findings & Quantitative Metrics"
+            )
+        elif ml_intent == "COMPARISON":
+            style_guide = (
+                "The user requested a comparison. Present a clear contrast highlighting:\n"
+                "- Core architectural / conceptual differences\n"
+                "- Comparative trade-offs, strengths, and weaknesses\n"
+                "- Benchmark differences supported by citations"
+            )
+        elif ml_intent == "STUDY":
+            style_guide = (
+                "The user requested study or revision material. Break down the core concepts clearly, "
+                "highlight key definitions, and provide actionable revision questions."
+            )
+        elif ml_intent == "ACTION_ITEMS":
+            style_guide = (
+                "The user requested action items. List concrete, actionable next steps, decisions, "
+                "and recommendations clearly."
             )
         else:
             style_guide = (
-                "CRITICAL INSTRUCTION: Answer the specific question directly, concisely, and factually.\n"
-                "- Do NOT repeat an entire unrequested document introduction, executive summary, or full-context dump.\n"
-                "- Provide a direct, targeted answer to what was asked, supported by specific details and numbers from the context.\n"
-                "- For factual/lookup questions (who, what, when, how much/many), provide the answer right away in the first sentence.\n"
-                "- For conceptual or 'how' questions, explain the specific mechanism clearly with relevant technical points."
+                "Answer the specific question directly, concisely, and factually.\n"
+                "- Ground every claim in the provided DOCUMENT CONTEXT.\n"
+                "- For factual lookups, provide the direct answer in the first sentence.\n"
+                "- Cite specific document names and page numbers (e.g., [Doc: filename, Page X]).\n"
+                "- If the context does not contain enough evidence, state clearly that it is not covered."
             )
 
         system_instruction = (
             f"You are IntelliAssist AI, an expert document intelligence assistant. {target_clause}\n\n"
+            f"Query Intent: {ml_intent} (Confidence: {ml_intent_confidence:.2f})\n\n"
             f"{style_guide}\n\n"
             "Guidelines:\n"
             "- Ground your response strictly in the provided DOCUMENT CONTEXT.\n"
-            "- Always cite specific document names and page numbers (e.g., [Ref: filename, Page X]) for facts and metrics.\n"
-            "- If the provided context does not contain the answer, state clearly that it is not covered in the document."
+            "- Always cite specific document names and page numbers for facts and metrics."
         )
 
         rag_prompt = (
@@ -298,7 +358,7 @@ class RAGEngine:
             f"Please answer the user query directly based on the context above."
         )
 
-        # 7. Generate answer via LLM service
+        # 8. Generate answer via LLM service
         llm_response = self.llm_service.generate(
             prompt=rag_prompt,
             system_instruction=system_instruction,
@@ -306,17 +366,20 @@ class RAGEngine:
             target_doc_name=active_filter_doc
         )
 
-        # 8. Format structured source citations
+        # 9. Format verified source citations
         sources = []
         for chunk in retrieved_chunks:
+            c_score = float(chunk.get("score", 0.85))
             sources.append({
                 "filename": chunk.get("filename", "Unknown"),
                 "page_number": chunk.get("page_number", 1),
                 "total_pages": chunk.get("total_pages", 1),
-                "score": chunk.get("score", 0.90),
-                "similarity_percentage": chunk.get("similarity_percentage", 90),
+                "score": round(c_score, 4),
+                "similarity_percentage": int(round(c_score * 100)),
                 "text_snippet": chunk.get("text", ""),
-                "chunk_id": chunk.get("chunk_id", "")
+                "chunk_id": chunk.get("chunk_id", ""),
+                "match_type": chunk.get("match_type", "Semantic Match"),
+                "match_explanation": chunk.get("match_explanation", "Retrieved via semantic vector search")
             })
 
         return {
@@ -328,5 +391,7 @@ class RAGEngine:
             "latency_sec": llm_response.get("latency_sec", 0.35),
             "is_demo": llm_response.get("is_demo", False),
             "is_low_confidence": False,
+            "query_intent": ml_intent,
+            "confidence": calculated_confidence,
             "notice": llm_response.get("notice", None)
         }

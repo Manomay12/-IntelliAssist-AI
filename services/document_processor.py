@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Tuple, Optional
 import pypdf
 # pyrefly: ignore [missing-import]
 import docx
+from services.ocr_service import OCRService
 
 logger = logging.getLogger(__name__)
 
@@ -138,23 +139,15 @@ class DocumentProcessor:
             except Exception as e:
                 logger.warning("Raw fallback extraction failed: %s", e)
 
-        # Strategy 3: Detect scanned image PDF or corrupted content
-        if not pages_data:
-            warning_msg = (
-                f"⚠️ We couldn't extract readable text from '{filename}'. "
-                "The file may be a scanned image-only PDF, corrupted, or password-protected. "
-                "OCR or text-selectable PDFs are recommended."
+        # Strategy 3: Modular OCR Fallback when native digital text is insufficient (<20 chars)
+        if not pages_data or sum(p.get("char_count", 0) for p in pages_data) < 20:
+            logger.info("Insufficient native text in PDF '%s'. Triggering modular OCR fallback pipeline...", filename)
+            ocr_service = OCRService()
+            pages_data, warning_msg = ocr_service.handle_scanned_pdf_pages(
+                file_bytes=file_bytes,
+                filename=filename,
+                total_pages=total_pages
             )
-            # Create a diagnostic placeholder record so indexing does not crash
-            pages_data.append({
-                "page_number": 1,
-                "total_pages": total_pages,
-                "text": f"Scanned/Image PDF Notice: '{filename}' contains {total_pages} page(s) without selectable text.",
-                "char_count": 0,
-                "word_count": 0,
-                "filename": filename,
-                "is_scanned": True
-            })
 
         return pages_data, warning_msg
 

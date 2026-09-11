@@ -176,6 +176,72 @@ class LLMService:
         # 4. Default: Smart Local Demo AI (Guaranteed 100% operational with exhaustive explanations)
         return self._generate_smart_demo(prompt, context_chunks, target_doc_name=target_doc_name)
 
+    def generate_stream(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        context_chunks: Optional[List[Dict[str, Any]]] = None,
+        target_doc_name: Optional[str] = None
+    ):
+        """
+        Yield streaming text tokens when external API supports streaming,
+        falling back cleanly to complete response generation.
+        """
+        # 1. Google Gemini Streaming
+        if "Gemini" in self.provider and (self.api_key or os.getenv("GEMINI_API_KEY")):
+            try:
+                key = self.api_key or os.getenv("GEMINI_API_KEY")
+                from google import genai
+                client = genai.Client(api_key=key, http_options={"timeout": 15.0})
+                full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+                model_to_use = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                
+                response_stream = client.models.generate_content_stream(
+                    model=model_to_use,
+                    contents=full_prompt
+                )
+                for chunk in response_stream:
+                    if chunk.text:
+                        yield chunk.text
+                return
+            except Exception as e:
+                logger.warning("Gemini streaming failed (%s). Falling back to non-streaming response.", e)
+
+        # 2. OpenAI Streaming
+        elif "OpenAI" in self.provider and (self.api_key or os.getenv("OPENAI_API_KEY")):
+            try:
+                key = self.api_key or os.getenv("OPENAI_API_KEY")
+                from openai import OpenAI
+                client = OpenAI(api_key=key)
+                messages = []
+                if system_instruction:
+                    messages.append({"role": "system", "content": system_instruction})
+                messages.append({"role": "user", "content": prompt})
+                model_to_use = self.model_name if "gpt" in self.model_name else "gpt-4o-mini"
+                
+                stream = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    stream=True,
+                    timeout=15
+                )
+                for part in stream:
+                    delta = part.choices[0].delta.content if part.choices else None
+                    if delta:
+                        yield delta
+                return
+            except Exception as e:
+                logger.warning("OpenAI streaming failed (%s). Falling back to non-streaming response.", e)
+
+        # Fallback: Generate full response and yield in word tokens
+        full_res = self.generate(prompt, system_instruction, context_chunks, target_doc_name)
+        text = full_res.get("text", "")
+        for word in text.split(" "):
+            yield word + " "
+
+
     def _generate_smart_demo(
         self,
         prompt: str,
