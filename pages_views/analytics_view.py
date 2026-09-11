@@ -45,13 +45,13 @@ def render_analytics_page(
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        render_metric_card("Total Documents", len(doc_infos), "Active Files", "Library", "Managed Files")
+        render_metric_card("Total Documents", len(doc_infos), "Active", "Managed Files")
     with col2:
-        render_metric_card("Total Pages", total_pages, "Normalized", "Pages", "Extracted Pages")
+        render_metric_card("Total Pages", total_pages, "Normalized", "Extracted Pages")
     with col3:
-        render_metric_card("Indexed Chunks", total_chunks, "Stored", "Chunks", "Chunk Store")
+        render_metric_card("Indexed Chunks", total_chunks, "Stored", "Chunk Store")
     with col4:
-        render_metric_card("Dense Vectors", total_chunks, "384-dim", "Embeddings", "Cosine Index")
+        render_metric_card("Dense Vectors", total_chunks, "384-dim", "Cosine Index")
 
     st.markdown("<div style='margin:20px 0;'></div>", unsafe_allow_html=True)
 
@@ -60,13 +60,13 @@ def render_analytics_page(
     
     u_col1, u_col2, u_col3, u_col4 = st.columns(4)
     with u_col1:
-        render_metric_card("Questions Evaluated", total_questions, "Grounded", "Queries", "Conversational RAG")
+        render_metric_card("Questions Evaluated", total_questions, "Grounded", "Conversational RAG")
     with u_col2:
-        render_metric_card("Syntheses Built", total_summaries, "Multi-Tier", "Reports", "Executive Briefs")
+        render_metric_card("Syntheses Built", total_summaries, "Multi-Tier", "Executive Briefs")
     with u_col3:
-        render_metric_card("Hybrid Searches", total_searches, "Dual-Engine", "Searches", "RRF Retrievals")
+        render_metric_card("Hybrid Searches", total_searches, "Dual-Engine", "RRF Retrievals")
     with u_col4:
-        render_metric_card("Avg Latency", f"{avg_latency:.2f}s", "Fast", "Duration", "RAG Pipeline Latency")
+        render_metric_card("Avg Latency", f"{avg_latency:.2f}s", "Fast", "Pipeline Latency")
 
     st.markdown("<div style='margin:24px 0;'></div>", unsafe_allow_html=True)
 

@@ -13,7 +13,9 @@ def render_document_card(
     on_summarize: Optional[Callable[[str], None]] = None,
     on_chat: Optional[Callable[[str], None]] = None,
     on_delete: Optional[Callable[[str], None]] = None,
-    key_prefix: str = "doc"
+    key_prefix: str = "doc",
+    *args,
+    **kwargs
 ):
     """Render a modern document card with metadata, classification, and integrated actions."""
     filename = doc_info.get("filename", "Unknown Document")

@@ -11,7 +11,9 @@ def render_suggested_questions(
     on_select: Callable[[str], None],
     active_doc: Optional[str] = None,
     doc_registry: Optional[Dict[str, Dict[str, Any]]] = None,
-    question_generator: Optional[Any] = None
+    question_generator: Optional[Any] = None,
+    *args,
+    **kwargs
 ):
     """Render modern clickable prompt suggestion chips tailored to active document scope with shuffle support."""
     if "chat_sug_seed" not in st.session_state:
@@ -76,7 +78,9 @@ def render_suggested_questions(
 def render_chat_message(
     msg: Dict[str, Any],
     on_feedback: Optional[Callable[[str, str], None]] = None,
-    on_copy: Optional[Callable[[str], None]] = None
+    on_copy: Optional[Callable[[str], None]] = None,
+    *args,
+    **kwargs
 ):
     """Render a single user or assistant chat message."""
     role = msg.get("role", "user")

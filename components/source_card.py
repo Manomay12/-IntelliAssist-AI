@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 import streamlit as st
 from utils.helpers import get_relevance_badge_html, get_file_icon
 
-def render_sources_section(sources: List[Dict[str, Any]], key_prefix: str = "src"):
+def render_sources_section(sources: List[Dict[str, Any]], key_prefix: str = "src", *args, **kwargs):
     """Render expandable source citation cards beneath an AI response."""
     if not sources:
         return
